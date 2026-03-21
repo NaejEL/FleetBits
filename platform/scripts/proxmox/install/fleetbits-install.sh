@@ -288,3 +288,29 @@ Aptly GPG Key ID: ${GPG_KEY_ID:-"(not generated)"}
 EOF
 chmod 600 "${INSTALL_DIR}/credentials.txt"
 success "Credentials saved to ${INSTALL_DIR}/credentials.txt"
+
+# ── Optional: enroll VPS as a fleet device (self-monitoring) ──────────────────
+echo ""
+read -rp "$(echo -e "${YLW}[?]${NC}   Enroll this VPS as a fleet device for self-monitoring? [y/N]: ")" ENROLL_VPS
+if [[ "${ENROLL_VPS,,}" == "y" ]]; then
+    info "Cloning FleetBits-agent (required to build the vps-device container)..."
+    if [ -d "${INSTALL_DIR}/FleetBits-agent" ]; then
+        git -C "${INSTALL_DIR}/FleetBits-agent" pull --ff-only
+    else
+        git clone https://github.com/NaejEL/FleetBits-agent.git "${INSTALL_DIR}/FleetBits-agent"
+    fi
+    success "FleetBits-agent cloned."
+
+    info "Running VPS enrollment script..."
+    bash "${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh" \
+        --api-url http://localhost:8000 \
+        --secrets "${INSTALL_DIR}/FleetBits-platform/secrets.env"
+
+    info "Starting vps-device container..."
+    cd "${COMPOSE_DIR}"
+    docker compose --profile agent --env-file ../secrets.env up -d --build vps-device
+    success "vps-device started — VPS is now a managed fleet device."
+else
+    info "Skipped. To enable VPS self-monitoring later, run:"
+    echo "  bash ${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh"
+fi
