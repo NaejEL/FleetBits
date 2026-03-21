@@ -45,6 +45,11 @@
     <li class="nav-item {% if request.endpoint and request.endpoint.startswith('audit') %}active{% endif %}">
       <a href="{{ url_for('audit.audit_log') }}">Audit Log</a>
     </li>
+    {% if current_role == 'admin' %}
+    <li class="nav-item {% if request.endpoint == 'admin.users_list' %}active{% endif %}">
+      <a href="{{ url_for('admin.users_list') }}">Users</a>
+    </li>
+    {% endif %}
   </ul>
 
   <div class="nav-footer">

@@ -36,6 +36,12 @@ def login_submit():
         token = api.login(username, password)
         session["jwt"] = token
         session["username"] = username
+        # Fetch full user profile to store role for UI-level gating
+        try:
+            me = api.get_me()
+            session["role"] = me.get("role", "viewer")
+        except ApiError:
+            session["role"] = "viewer"
         return redirect(url_for("inventory.overview"))
     except ApiError as exc:
         flash(str(exc.detail), "error")

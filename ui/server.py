@@ -51,6 +51,7 @@ def inject_globals():
         "grafana_url": os.environ.get("GRAFANA_URL", "http://localhost:3000"),
         "semaphore_url": os.environ.get("SEMAPHORE_URL", "http://localhost:3001"),
         "current_user": session.get("username"),
+        "current_role": session.get("role", "viewer"),
     }
 
 

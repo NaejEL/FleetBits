@@ -297,9 +297,12 @@ APTLY_API_URL = os.environ.get("APTLY_API_URL", "http://aptly-api:8080").rstrip(
 
 
 def aptly_list_repos() -> list[dict]:
-    resp = requests.get(f"{APTLY_API_URL}/api/repos", timeout=10)
-    if resp.status_code == 200:
-        return resp.json()
+    try:
+        resp = requests.get(f"{APTLY_API_URL}/api/repos", timeout=10)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
     return []
 
 
@@ -371,3 +374,55 @@ def get_observability_alerts(status: str = "open") -> list[dict]:
             timeout=10,
         )
     ).json()
+
+
+# ─── Users (admin) ────────────────────────────────────────────────────────────
+
+def get_me() -> dict:
+    return _check(requests.get(f"{FLEET_API_URL}/api/v1/auth/users/me", headers=_headers(), timeout=10)).json()
+
+
+def get_users() -> list[dict]:
+    return _check(requests.get(f"{FLEET_API_URL}/api/v1/auth/users", headers=_headers(), timeout=10)).json()
+
+
+def create_user(username: str, password: str, role: str, email: str | None = None, site_scope: str | None = None) -> dict:
+    payload: dict = {"username": username, "password": password, "role": role}
+    if email:
+        payload["email"] = email
+    if site_scope:
+        payload["site_scope"] = site_scope
+    return _check(requests.post(f"{FLEET_API_URL}/api/v1/auth/users", headers=_headers(), json=payload, timeout=10)).json()
+
+
+def update_user(user_id: str, **kwargs: object) -> dict:
+    """Pass any subset of: role, email, site_scope, is_active."""
+    return _check(requests.patch(f"{FLEET_API_URL}/api/v1/auth/users/{user_id}", headers=_headers(), json=kwargs, timeout=10)).json()
+
+
+def admin_reset_password(user_id: str, new_password: str) -> None:
+    _check(requests.post(
+        f"{FLEET_API_URL}/api/v1/auth/users/{user_id}/reset-password",
+        headers=_headers(),
+        json={"new_password": new_password},
+        timeout=10,
+    ))
+
+
+# ─── API Keys (admin) ────────────────────────────────────────────────────────
+
+def get_api_keys() -> list[dict]:
+    return _check(requests.get(f"{FLEET_API_URL}/api/v1/auth/api-keys", headers=_headers(), timeout=10)).json()
+
+
+def create_api_key(key_name: str, role: str, expires_days: int | None = None, site_scope: str | None = None) -> dict:
+    payload: dict = {"key_name": key_name, "role": role}
+    if expires_days is not None:
+        payload["expires_days"] = expires_days
+    if site_scope:
+        payload["site_scope"] = site_scope
+    return _check(requests.post(f"{FLEET_API_URL}/api/v1/auth/api-keys", headers=_headers(), json=payload, timeout=10)).json()
+
+
+def revoke_api_key(key_id: str) -> None:
+    _check(requests.delete(f"{FLEET_API_URL}/api/v1/auth/api-keys/{key_id}", headers=_headers(), timeout=10))

@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Users & API Keys — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Users & API Keys</strong>
+{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-create-user').showModal()">+ New User</button>
+  <button class="btn btn-ghost btn-sm" onclick="document.getElementById('modal-create-key').showModal()">+ New API Key</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">USERS & API KEYS</h1>
+  <p class="page-sub">Manage platform accounts, role assignments, and CI/automation API keys.</p>
+</div>
+
+<!-- ── User list ──────────────────────────────────────────────────────────── -->
+<section class="card-section">
+  <h2 class="section-title">USERS</h2>
+  {% if users %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Site Scope</th>
+          <th>Active</th>
+          <th>Created</th>
+          <th style="width:180px;text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+          <tr>
+            <td><code>{{ u.username }}</code></td>
+            <td>{{ u.email or '—' }}</td>
+            <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
+            <td>{{ u.site_scope or '—' }}</td>
+            <td>{% if u.is_active %}<span class="badge badge-ok">active</span>{% else %}<span class="badge badge-warn">inactive</span>{% endif %}</td>
+            <td>{{ u.created_at[:10] if u.created_at else '—' }}</td>
+            <td style="text-align:right">
+              <button class="btn btn-ghost btn-xs"
+                onclick="openEditModal('{{ u.user_id }}','{{ u.username }}','{{ u.role }}','{{ u.email or '' }}','{{ u.site_scope or '' }}',{{ 'true' if u.is_active else 'false' }})">
+                Edit
+              </button>
+              <button class="btn btn-ghost btn-xs"
+                onclick="openResetModal('{{ u.user_id }}','{{ u.username }}')">
+                Reset PW
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No users found.</p>
+  {% endif %}
+</section>
+
+<!-- ── API Keys list ──────────────────────────────────────────────────────── -->
+<section class="card-section" style="margin-top:24px">
+  <h2 class="section-title">API KEYS</h2>
+  <p class="page-sub" style="margin-bottom:12px">Opaque bearer tokens for CI pipelines and automation scripts. Tokens are shown once at creation — store them immediately.</p>
+  {% if api_keys %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Site Scope</th>
+          <th>Expires</th>
+          <th>Last Used</th>
+          <th>Status</th>
+          <th style="width:80px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for k in api_keys %}
+          <tr>
+            <td><code>{{ k.key_name }}</code></td>
+            <td><span class="badge badge-{{ k.role }}">{{ k.role }}</span></td>
+            <td>{{ k.site_scope or '—' }}</td>
+            <td>{{ k.expires_at[:10] if k.expires_at else '∞' }}</td>
+            <td>{{ k.last_used_at[:10] if k.last_used_at else 'never' }}</td>
+            <td>{% if k.is_active %}<span class="badge badge-ok">active</span>{% else %}<span class="badge badge-warn">revoked</span>{% endif %}</td>
+            <td>
+              {% if k.is_active %}
+              <form method="post" action="{{ url_for('admin.revoke_api_key_post', key_id=k.key_id) }}"
+                    onsubmit="return confirm('Revoke API key {{ k.key_name }}? This cannot be undone.')">
+                <button type="submit" class="btn btn-danger btn-xs">Revoke</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No API keys created yet.</p>
+  {% endif %}
+</section>
+
+<!-- ── Create User modal ─────────────────────────────────────────────────── -->
+<dialog id="modal-create-user">
+  <div class="dialog-header">
+    <span>CREATE USER</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('admin.create_user_post') }}">
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Username *</label>
+          <input name="username" class="form-control" placeholder="alice" required autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password *</label>
+          <input name="password" type="password" class="form-control" required autocomplete="new-password" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Role *</label>
+          <select name="role" class="form-control" required>
+            <option value="viewer">viewer</option>
+            <option value="technician">technician</option>
+            <option value="operator">operator</option>
+            <option value="ci_bot">ci_bot</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Site Scope</label>
+          <input name="site_scope" class="form-control" placeholder="paris (leave blank for global)" autocomplete="off" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input name="email" type="email" class="form-control" placeholder="alice@example.com" autocomplete="off" />
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Create API Key modal ──────────────────────────────────────────────── -->
+<dialog id="modal-create-key">
+  <div class="dialog-header">
+    <span>CREATE API KEY</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('admin.create_api_key_post') }}">
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Key Name *</label>
+          <input name="key_name" class="form-control" placeholder="ci-github-prod" required autocomplete="off" />
+          <span class="form-hint">Unique identifier, e.g. ci-github-paris</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role *</label>
+          <select name="role" class="form-control">
+            <option value="ci_bot" selected>ci_bot</option>
+            <option value="operator">operator</option>
+            <option value="viewer">viewer</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Expires (days)</label>
+          <input name="expires_days" type="number" min="1" max="3650" class="form-control" placeholder="365 (leave blank = never)" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Site Scope</label>
+          <input name="site_scope" class="form-control" placeholder="paris (blank = global)" autocomplete="off" />
+        </div>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Generate Key</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Edit User modal ───────────────────────────────────────────────────── -->
+<dialog id="modal-edit-user">
+  <div class="dialog-header">
+    <span>EDIT USER — <span id="edit-username"></span></span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form id="form-edit-user" method="post" action="">
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select name="role" id="edit-role" class="form-control">
+            <option value="viewer">viewer</option>
+            <option value="technician">technician</option>
+            <option value="operator">operator</option>
+            <option value="ci_bot">ci_bot</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Active</label>
+          <select name="is_active" class="form-control" id="edit-is-active">
+            <option value="true">Active</option>
+            <option value="false">Suspended</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input name="email" id="edit-email" type="email" class="form-control" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Site Scope</label>
+          <input name="site_scope" id="edit-site-scope" class="form-control" placeholder="paris (blank = global)" autocomplete="off" />
+        </div>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Reset Password modal ──────────────────────────────────────────────── -->
+<dialog id="modal-reset-pw">
+  <div class="dialog-header">
+    <span>RESET PASSWORD — <span id="reset-username"></span></span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form id="form-reset-pw" method="post" action="">
+    <div class="dialog-body">
+      <div class="form-group">
+        <label class="form-label">New Password *</label>
+        <input name="new_password" type="password" class="form-control" required autocomplete="new-password" />
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-danger btn-sm">Reset Password</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+function openEditModal(userId, username, role, email, siteScope, isActive) {
+  document.getElementById('edit-username').textContent = username;
+  document.getElementById('edit-role').value = role;
+  document.getElementById('edit-email').value = email;
+  document.getElementById('edit-site-scope').value = siteScope;
+  document.getElementById('edit-is-active').value = isActive ? 'true' : 'false';
+  document.getElementById('form-edit-user').action = '/admin/users/' + userId + '/update';
+  document.getElementById('modal-edit-user').showModal();
+}
+
+function openResetModal(userId, username) {
+  document.getElementById('reset-username').textContent = username;
+  document.getElementById('form-reset-pw').action = '/admin/users/' + userId + '/reset-password';
+  document.getElementById('modal-reset-pw').showModal();
+}
+</script>
+{% endblock %}

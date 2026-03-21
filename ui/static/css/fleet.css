@@ -134,6 +134,8 @@ textarea, input, select { font-family: var(--font); }
 .flash-warning  { background: #2e2410; border: 1px solid var(--warning);   color: #e3b341; }
 .flash-error    { background: #3a1a1a; border: 1px solid var(--critical);  color: #ff7b72; }
 .flash-info     { background: #1a2740; border: 1px solid var(--accent);    color: #79c0ff; }
+/* api_key flash: distinct amber with monospace token for easy copying */
+.flash-api_key  { background: #2e2010; border: 1px solid #d29922; color: #e3b341; font-family: monospace; word-break: break-all; }
 
 /* ── Common page header ─────────────────────────────────────────── */
 .page-header {
@@ -224,6 +226,15 @@ textarea, input, select { font-family: var(--font); }
 .status-badge.status-warning { color: var(--warning); }
 .status-critical .status-badge,
 .status-badge.status-critical { color: var(--critical); }
+
+/* ── Role + status badge tints (users page) ─────────────────────── */
+.badge-ok    { color: var(--ok); border-color: var(--ok); }
+.badge-warn  { color: var(--warning); border-color: var(--warning); }
+.badge-admin      { color: var(--critical); border-color: var(--critical); }
+.badge-operator   { color: var(--accent); border-color: var(--accent); }
+.badge-technician { color: var(--warning); border-color: var(--warning); }
+.badge-viewer     { color: var(--text-muted); }
+.badge-ci_bot     { color: #8b5cf6; border-color: #8b5cf6; }
 
 /* ── Site grid (Overview) ───────────────────────────────────────── */
 .site-grid {
