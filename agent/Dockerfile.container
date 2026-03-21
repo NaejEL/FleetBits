@@ -1,0 +1,67 @@
+# Fleet Agent — containerised variant for vps-device / lab testing.
+#
+# This image installs the fleet-agent from the local aptly dev repo if
+# APTLY_URL is set; otherwise it bootstraps directly from the source tree
+# (handy before the first GitHub Actions release tag).
+#
+# Build context: FleetBits-agent/
+# Build arg:     APTLY_URL  (optional)  e.g. http://aptly-api:8080
+# Build arg:     AGENT_VERSION (optional) e.g. 1.0.0
+
+FROM ubuntu:22.04
+
+ARG APTLY_URL=""
+ARG AGENT_VERSION=""
+ARG ALLOY_VERSION=1.8.2
+ARG TARGETARCH=amd64
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        jq \
+        procps \
+        unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Install Grafana Alloy ─────────────────────────────────────────────────────
+# Map Docker TARGETARCH to Alloy release asset name.
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64)  ALLOY_ASSET="alloy-linux-amd64.zip" ;; \
+      arm64)  ALLOY_ASSET="alloy-linux-arm64.zip" ;; \
+      arm)    ALLOY_ASSET="alloy-linux-armv7.zip" ;; \
+      *)      echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac; \
+    curl -fsSL \
+      "https://github.com/grafana/alloy/releases/download/v${ALLOY_VERSION}/${ALLOY_ASSET}" \
+      -o /tmp/alloy.zip; \
+    unzip -j /tmp/alloy.zip "alloy-linux-*" -d /tmp/alloy_bin; \
+    install -m 755 /tmp/alloy_bin/alloy-linux-* /usr/bin/alloy; \
+    rm -rf /tmp/alloy.zip /tmp/alloy_bin
+
+# ── Install agent scripts from source tree ───────────────────────────────────
+# (mirrors the layout a real .deb would produce)
+COPY usr/lib/fleet-agent/  /usr/lib/fleet-agent/
+COPY lib/systemd/           /dev/null/ignored/
+RUN chmod +x /usr/lib/fleet-agent/*.sh
+
+# ── Container-specific alloy template (no systemd/journal collectors) ────────
+COPY usr/lib/fleet-agent/config.alloy.container.tmpl \
+     /usr/lib/fleet-agent/config.alloy.container.tmpl
+
+COPY container-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# ── Optionally reinstall from aptly (tests the CI/CD .deb path) ─────────────
+# When APTLY_URL is provided, adds the apt source and installs the package.
+# This layer is a no-op during vanilla dev builds.
+RUN if [ -n "${APTLY_URL}" ] && [ -n "${AGENT_VERSION}" ]; then \
+      echo "deb [trusted=yes] ${APTLY_URL}/dev bookworm main" \
+        > /etc/apt/sources.list.d/fleetbits.list; \
+      apt-get update; \
+      apt-get install -y fleet-agent="${AGENT_VERSION}"; \
+    fi
+
+ENTRYPOINT ["/entrypoint.sh"]

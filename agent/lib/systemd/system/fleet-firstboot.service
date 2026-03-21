@@ -1,0 +1,26 @@
+[Unit]
+Description=Fleet Agent First-Boot Provisioning
+Documentation=https://github.com/NaejEL/FleetBits-agent
+# Run after network is up — the script needs to reach Fleet API.
+After=network-online.target
+Wants=network-online.target
+# Must run before fleet-agent because it produces device-identity.conf.
+Before=fleet-agent.service
+# Condition: only run if the provision token file exists.
+# If the file is missing (already provisioned, or base image boot), this service
+# exits successfully and does nothing.
+ConditionPathExists=/boot/firmware/fleet-provision.json
+
+[Service]
+Type=oneshot
+# Self-disabling: the script calls `systemctl disable fleet-firstboot.service`
+# and removes the provision token. Subsequent boots skip this service entirely
+# because ConditionPathExists will no longer be satisfied.
+ExecStart=/usr/lib/fleet-agent/firstboot.sh
+RemainAfterExit=no
+
+# Give the provisioning flow up to 5 minutes (API calls with retries, Headscale enrollment)
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

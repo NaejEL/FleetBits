@@ -1,0 +1,24 @@
+# Build outputs
+dist/
+build/
+*.deb
+
+# Alloy binary (downloaded at build time, never committed)
+build/alloy
+alloy-linux-*
+*.zip
+
+# Version lock file for local overrides
+ALLOY_VERSION.local
+
+# Python / Ruby tooling (fpm uses Ruby)
+.bundle/
+vendor/bundle/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# macOS
+.DS_Store

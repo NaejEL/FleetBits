@@ -1,0 +1,155 @@
+// /usr/lib/fleet-agent/config.alloy.tmpl
+// ─────────────────────────────────────────────────────────────────────────────
+// Grafana Alloy configuration template.
+// ALL_CAPS_PLACEHOLDER values are substituted by generate-config.sh.
+// This file is installed by the fleet-agent .deb; do not edit it directly.
+// To change the active config re-run: /usr/lib/fleet-agent/generate-config.sh
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ===========================================================
+// Node / host metrics (always enabled)
+// ===========================================================
+prometheus.exporter.unix "node" {}
+
+prometheus.scrape "node" {
+  targets         = prometheus.exporter.unix.node.targets
+  scrape_interval = "SCRAPE_INTERVAL_PLACEHOLDER"
+  forward_to      = [prometheus.relabel.add_labels.receiver]
+}
+
+// ===========================================================
+// systemd unit metrics (always enabled)
+// ===========================================================
+prometheus.exporter.unix "systemd" {
+  enable_collectors = ["systemd"]
+}
+
+prometheus.scrape "systemd" {
+  targets         = prometheus.exporter.unix.systemd.targets
+  scrape_interval = "SCRAPE_INTERVAL_PLACEHOLDER"
+  forward_to      = [prometheus.relabel.add_labels.receiver]
+}
+
+// ===========================================================
+// BEGIN PROCESS_EXPORTER — removed by generate-config.sh if ENABLE_PROCESS_EXPORTER=false
+// ===========================================================
+prometheus.exporter.process "processes" {
+  matcher {
+    name    = "{{.Comm}}"
+    cmdline = [".+"]
+  }
+}
+
+prometheus.scrape "processes" {
+  targets         = prometheus.exporter.process.processes.targets
+  scrape_interval = "SCRAPE_INTERVAL_PLACEHOLDER"
+  forward_to      = [prometheus.relabel.add_labels.receiver]
+}
+// END PROCESS_EXPORTER
+
+// ===========================================================
+// BEGIN MQTT_EXPORTER — removed by generate-config.sh if ENABLE_MQTT_EXPORTER=false
+// ===========================================================
+prometheus.exporter.mqtt "mqtt" {
+  address = "MQTT_BROKER_HOST_PLACEHOLDER:MQTT_BROKER_PORT_PLACEHOLDER"
+}
+
+prometheus.scrape "mqtt" {
+  targets         = prometheus.exporter.mqtt.mqtt.targets
+  scrape_interval = "SCRAPE_INTERVAL_PLACEHOLDER"
+  forward_to      = [prometheus.relabel.add_labels.receiver]
+}
+// END MQTT_EXPORTER
+
+// ===========================================================
+// Label injection — applied to all metric streams
+// ===========================================================
+prometheus.relabel "add_labels" {
+  forward_to = [prometheus.remote_write.central.receiver]
+
+  rule {
+    target_label = "site"
+    replacement  = "SITE_ID_PLACEHOLDER"
+  }
+  rule {
+    target_label = "zone"
+    replacement  = "ZONE_ID_PLACEHOLDER"
+  }
+  rule {
+    target_label = "device_role"
+    replacement  = "DEVICE_ROLE_PLACEHOLDER"
+  }
+  rule {
+    target_label = "device_id"
+    replacement  = "DEVICE_ID_PLACEHOLDER"
+  }
+  rule {
+    target_label = "profile"
+    replacement  = "PROFILE_PLACEHOLDER"
+  }
+}
+
+// ===========================================================
+// Remote write — with WAL for store-and-forward
+// ===========================================================
+prometheus.remote_write "central" {
+  endpoint {
+    url = "FLEET_METRICS_URL_PLACEHOLDER"
+    headers = {
+      "Authorization" = "Bearer FLEET_AGENT_TOKEN_PLACEHOLDER",
+    }
+    queue_config {
+      capacity             = 10000
+      max_samples_per_send = 2000
+      batch_send_deadline  = "5s"
+    }
+  }
+  // Bound WAL to prevent SD card saturation during extended outages.
+  // ~8h of data buffered at most.
+  wal {
+    truncate_frequency = "2h"
+    min_keepalive_time = "5m"
+    max_keepalive_time = "8h"
+  }
+}
+
+// ===========================================================
+// Journal log collection (always enabled)
+// ===========================================================
+loki.source.journal "journal" {
+  max_age    = "12h"
+  forward_to = [loki.process.add_labels.receiver]
+
+  relabel_rules = loki.relabel.journal.rules
+}
+
+loki.relabel "journal" {
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.process "add_labels" {
+  forward_to = [loki.write.central.receiver]
+
+  stage.static_labels {
+    values = {
+      site        = "SITE_ID_PLACEHOLDER",
+      zone        = "ZONE_ID_PLACEHOLDER",
+      device_id   = "DEVICE_ID_PLACEHOLDER",
+      device_role = "DEVICE_ROLE_PLACEHOLDER",
+    }
+  }
+}
+
+loki.write "central" {
+  endpoint {
+    url          = "FLEET_LOGS_URL_PLACEHOLDER"
+    bearer_token = "FLEET_AGENT_TOKEN_PLACEHOLDER"
+  }
+}

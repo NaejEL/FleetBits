@@ -1,0 +1,33 @@
+[Unit]
+Description=Fleet Agent (Grafana Alloy)
+Documentation=https://github.com/NaejEL/FleetBits-agent
+After=network-online.target
+Wants=network-online.target
+# fleet-agent depends on a valid config.alloy — regenerate it before starting.
+# If generate-config.sh fails (missing identity file), the service will not start.
+
+[Service]
+Type=simple
+User=root
+
+# Regenerate Alloy config from device-identity.conf on every start.
+# Idempotent: no-op if nothing changed; updates config if identity was modified.
+ExecStartPre=/usr/lib/fleet-agent/generate-config.sh
+
+ExecStart=/usr/bin/alloy run /etc/alloy/config.alloy --disable-reporting
+
+# Restart policy: restart on any failure within 5s
+Restart=on-failure
+RestartSec=5s
+
+# Watchdog: systemd kills and restarts the process if it stops sending keepalives.
+# Overridden by the systemd_hardening Ansible role via a drop-in:
+#   /etc/systemd/system/fleet-agent.service.d/watchdog.conf
+WatchdogSec=30s
+
+# Limits: prevent runaway memory or file descriptor leaks
+LimitNOFILE=65536
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

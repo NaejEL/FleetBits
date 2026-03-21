@@ -1,0 +1,12 @@
+[Unit]
+Description=Fleet Agent Heartbeat
+Documentation=https://github.com/NaejEL/FleetBits-agent
+After=network-online.target fleet-agent.service
+Requires=fleet-agent.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/fleet-agent/heartbeat.sh
+# Don't fail the timer if the heartbeat script encounters a transient network error.
+# The script already handles missing connectivity gracefully.
+SuccessExitStatus=0 1

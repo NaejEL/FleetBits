@@ -1,0 +1,102 @@
+// /usr/lib/fleet-agent/config.alloy.container.tmpl
+// ─────────────────────────────────────────────────────────────────────────────
+// Container-variant of the fleet-agent Alloy config.
+// Does NOT include systemd unit exporter or journal log collection
+// (unavailable inside Docker). Uses node exporter for /proc-based metrics.
+// ALL_CAPS_PLACEHOLDER values are substituted by container-entrypoint.sh.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ===========================================================
+// Node / host metrics (works in containers via /proc)
+// ===========================================================
+prometheus.exporter.unix "node" {}
+
+prometheus.scrape "node" {
+  targets         = prometheus.exporter.unix.node.targets
+  scrape_interval = "SCRAPE_INTERVAL_PLACEHOLDER"
+  forward_to      = [prometheus.relabel.add_labels.receiver]
+}
+
+// ===========================================================
+// Label injection
+// ===========================================================
+prometheus.relabel "add_labels" {
+  forward_to = [prometheus.remote_write.central.receiver]
+
+  rule {
+    target_label = "site"
+    replacement  = "SITE_ID_PLACEHOLDER"
+  }
+  rule {
+    target_label = "zone"
+    replacement  = "ZONE_ID_PLACEHOLDER"
+  }
+  rule {
+    target_label = "device_role"
+    replacement  = "DEVICE_ROLE_PLACEHOLDER"
+  }
+  rule {
+    target_label = "device_id"
+    replacement  = "DEVICE_ID_PLACEHOLDER"
+  }
+  rule {
+    target_label = "profile"
+    replacement  = "PROFILE_PLACEHOLDER"
+  }
+}
+
+// ===========================================================
+// Remote write — Prometheus
+// ===========================================================
+prometheus.remote_write "central" {
+  endpoint {
+    url = "FLEET_METRICS_URL_PLACEHOLDER"
+    headers = {
+      "Authorization" = "Bearer FLEET_AGENT_TOKEN_PLACEHOLDER",
+    }
+    queue_config {
+      capacity             = 5000
+      max_samples_per_send = 1000
+      batch_send_deadline  = "5s"
+    }
+  }
+  wal {
+    truncate_frequency = "2h"
+    min_keepalive_time = "5m"
+    max_keepalive_time = "4h"
+  }
+}
+
+// ===========================================================
+// Log forwarding — stdout/file to Loki
+// (No journal in Docker; forward /var/log/syslog-like sources if present)
+// ===========================================================
+local.file_match "container_logs" {
+  path_targets = [{"__path__" = "/var/log/*.log", "source" = "container"}]
+  sync_period  = "5s"
+}
+
+loki.source.file "container_logs" {
+  targets    = local.file_match.container_logs.targets
+  forward_to = [loki.process.add_labels.receiver]
+}
+
+loki.process "add_labels" {
+  forward_to = [loki.write.central.receiver]
+
+  stage.static_labels {
+    values = {
+      site        = "SITE_ID_PLACEHOLDER",
+      zone        = "ZONE_ID_PLACEHOLDER",
+      device_id   = "DEVICE_ID_PLACEHOLDER",
+      device_role = "DEVICE_ROLE_PLACEHOLDER",
+    }
+  }
+}
+
+loki.write "central" {
+  endpoint {
+    url          = "FLEET_LOGS_URL_PLACEHOLDER"
+    bearer_token = "FLEET_AGENT_TOKEN_PLACEHOLDER"
+  }
+}

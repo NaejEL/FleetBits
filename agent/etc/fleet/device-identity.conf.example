@@ -1,0 +1,42 @@
+# Fleet Agent Identity Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# This file is deployed by Ansible from the fleet-agent role and is preserved
+# across `apt upgrade` as a Debian conffile (never overwritten by package).
+#
+# After editing, run: systemctl restart fleet-agent
+# Or regenerate the Alloy config manually: /usr/lib/fleet-agent/generate-config.sh
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Device identity ───────────────────────────────────────────────────────────
+SITE_ID=CHANGE_ME                  # e.g. paris
+ZONE_ID=CHANGE_ME                  # e.g. zone-1
+DEVICE_ID=CHANGE_ME                # canonical hostname, e.g. rpi-paris-zone1-01
+DEVICE_ROLE=CHANGE_ME              # e.g. rpi-puzzle, rpi-video, mini-shared
+PROFILE=CHANGE_ME                  # e.g. profile_v1 (leave empty if none)
+ENVIRONMENT=prod                   # prod | staging | lab
+RING=2                             # 0=CI, 1=canary, 2=all sites
+
+# ── Fleet control plane URLs ──────────────────────────────────────────────────
+FLEET_METRICS_URL=https://metrics.fleet.example.com/api/v1/write
+FLEET_LOGS_URL=https://logs.fleet.example.com/loki/api/v1/push
+FLEET_API_URL=https://api.fleet.example.com
+
+# ── Per-device bearer token ───────────────────────────────────────────────────
+# Issued by Fleet API during bootstrap. Rotated only if device is re-enrolled.
+# Keep this secret — it is the device's identity toward the control plane.
+FLEET_AGENT_TOKEN=CHANGE_ME
+
+# ── Observability feature flags ───────────────────────────────────────────────
+# generate-config.sh reads these to enable optional Alloy components.
+# All devices always get: node metrics, systemd metrics, journal logs.
+
+# Enable the MQTT exporter on the device running Mosquitto.
+ENABLE_MQTT_EXPORTER=false
+MQTT_BROKER_HOST=localhost
+MQTT_BROKER_PORT=1883
+
+# Enable process-level metrics (useful on mini-PCs with high CPU consumers).
+ENABLE_PROCESS_EXPORTER=false
+
+# Alloy scrape interval. Use 30s on RPi, 15s on mini-PC.
+SCRAPE_INTERVAL=30s

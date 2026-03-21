@@ -1,0 +1,210 @@
+name: Build fleet-agent
+
+on:
+  push:
+    tags:
+      - "v*"           # Release: v1.2.3 → build all arches → publish to aptly dev
+  pull_request:
+    branches:
+      - main           # PR: build only, no publish — smoke-test the build script
+
+jobs:
+  # ── Build .deb packages for all architectures ──────────────────────────────
+  build:
+    name: Build .deb (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64, armhf]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install fpm
+        run: |
+          sudo apt-get install -y ruby ruby-dev build-essential
+          gem install fpm --no-document
+
+      - name: Install zip (for Alloy download)
+        run: sudo apt-get install -y unzip
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dev.$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build .deb
+        run: |
+          TARGET_ARCH=${{ matrix.arch }} \
+          VERSION=${{ steps.version.outputs.VERSION }} \
+          ./scripts/build-deb.sh
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-agent-${{ matrix.arch }}-${{ steps.version.outputs.VERSION }}
+          path: dist/fleet-agent_${{ steps.version.outputs.VERSION }}_${{ matrix.arch }}.deb
+          if-no-files-found: error
+          retention-days: 30
+
+  # ── Publish to aptly dev repo (tag pushes only) ────────────────────────────
+  publish-dev:
+    name: Publish to aptly dev
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      version:  ${{ steps.version.outputs.VERSION }}
+      snapshot: ${{ steps.publish.outputs.SNAPSHOT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download all .deb artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish to aptly dev via API
+        id: publish
+        env:
+          APTLY_API_URL: ${{ secrets.APTLY_API_URL }}   # https://repo.<your-domain>
+          VERSION:       ${{ steps.version.outputs.VERSION }}
+        run: |
+          UPLOAD_DIR="fleet-agent-${VERSION}"
+          SNAPSHOT="fleet-agent-${VERSION}-$(date +%Y%m%d%H%M%S)"
+          echo "SNAPSHOT=${SNAPSHOT}" >> "${GITHUB_OUTPUT}"
+
+          # 1. Upload each .deb to the aptly file store
+          for DEB in dist/fleet-agent_${VERSION}_*.deb; do
+            echo "Uploading ${DEB}..."
+            curl -sf \
+              -F "file=@${DEB}" \
+              "${APTLY_API_URL}/api/files/${UPLOAD_DIR}"
+          done
+
+          # 2. Import the uploaded files into the 'dev' repo
+          curl -sf -X POST \
+            "${APTLY_API_URL}/api/repos/dev/file/${UPLOAD_DIR}"
+
+          # 3. Snapshot the dev repo at this point in time
+          curl -sf -X POST \
+            -H 'Content-Type: application/json' \
+            -d "{\"Name\": \"${SNAPSHOT}\", \"Description\": \"fleet-agent ${VERSION} — dev build\"}" \
+            "${APTLY_API_URL}/api/repos/dev/snapshots"
+
+          # 4. Switch the published 'dev/bookworm' endpoint to the new snapshot
+          #    GPG signing: skip unless APTLY_GPG_KEY_ID secret is provided
+          GPG_KEY="${{ secrets.APTLY_GPG_KEY_ID }}"
+          if [ -n "${GPG_KEY}" ]; then
+            SIGNING="{\"GpgKey\": \"${GPG_KEY}\"}"
+          else
+            SIGNING='{"Skip": true}'
+          fi
+
+          curl -sf -X PUT \
+            -H 'Content-Type: application/json' \
+            -d "{\"Snapshots\": [{\"Component\": \"main\", \"Name\": \"${SNAPSHOT}\"}], \"Signing\": ${SIGNING}}" \
+            "${APTLY_API_URL}/api/publish/dev/bookworm"
+
+          - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/fleet-agent_${{ steps.version.outputs.VERSION }}_*.deb
+          generate_release_notes: true
+          tag_name: ${{ github.ref_name }}
+
+  # ── Build + push container image to GHCR ──────────────────────────────────
+  # Useful for the vps-device container and for QEMU-based lab testing.
+  build-container:
+    name: Build container image
+    needs: publish-dev
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/naejel/fleetbits-agent
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.container
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APTLY_URL=${{ secrets.APTLY_API_URL }}
+            AGENT_VERSION=${{ needs.publish-dev.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Ring 0 smoke test ──────────────────────────────────────────────────────
+  # Triggers a Ring 0 deployment via the Fleet API. Ring 0 = lab devices.
+  # Fleet API then schedules a Semaphore job to install the new package.
+  ring0-smoke-test:
+    name: Ring 0 smoke test
+    needs: [publish-dev, build-container]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Determine version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Trigger Ring 0 deployment via Fleet API
+        env:
+          FLEET_API_URL:  ${{ secrets.FLEET_API_URL }}
+          FLEET_CI_TOKEN: ${{ secrets.FLEET_CI_TOKEN }}
+          VERSION:        ${{ steps.version.outputs.VERSION }}
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${FLEET_CI_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"artifact_type\":    \"deb\",
+              \"artifact_package\": \"fleet-agent\",
+              \"artifact_ref\":     \"${VERSION}\",
+              \"ring\":             0,
+              \"change_id\":        \"ci-tag-${GITHUB_SHA}\",
+              \"requested_by\":     \"ci-bot\"
+            }" \
+            "${FLEET_API_URL}/api/v1/deployments"

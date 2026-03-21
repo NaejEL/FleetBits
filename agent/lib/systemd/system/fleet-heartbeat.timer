@@ -1,0 +1,15 @@
+[Unit]
+Description=Fleet Agent Heartbeat Timer
+Documentation=https://github.com/NaejEL/FleetBits-agent
+
+[Timer]
+# Fire immediately when the timer unit is started (so Fleet API sees the device fast).
+OnBootSec=10s
+# Thereafter, fire every 30 seconds.
+OnUnitActiveSec=30s
+# Best-effort accuracy: allow up to 5s drift to reduce wakeup storms on busy systems.
+AccuracySec=5s
+Unit=fleet-heartbeat.service
+
+[Install]
+WantedBy=timers.target
