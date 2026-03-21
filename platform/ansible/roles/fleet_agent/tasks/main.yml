@@ -1,0 +1,71 @@
+---
+# roles/fleet_agent/tasks/main.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Installs and configures the fleet-agent .deb package on an edge device.
+# Called by bootstrap_device.yml (first install) and deploy_artifact.yml
+# (version upgrades).
+#
+# Required variables (set per-device in inventory or passed as extra-vars):
+#   fleet_agent_version   — package version to install (e.g. "1.2.3")
+#   site                  — site slug (e.g. "paris")
+#   zone                  — zone slug (e.g. "zone-1")
+#   device_id             — canonical hostname (e.g. "rpi-paris-zone1-01")
+#   device_role           — free-text role label (e.g. "rpi-puzzle")
+#   profile               — profile slug (e.g. "profile_v1")
+#   fleet_agent_token     — per-device bearer token (from vault or API response)
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Add fleet aptly repo signing key
+  ansible.builtin.apt_key:
+    url: "{{ fleet_repo_url }}/gpg"
+    state: present
+
+- name: Add fleet aptly repo
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/fleet-archive-keyring.gpg] {{ fleet_repo_url }} {{ aptly_repo_suite }} {{ aptly_repo_component }}"
+    state: present
+    filename: fleet
+  notify: update apt cache
+
+- name: Flush handlers (ensure apt cache is fresh before install)
+  ansible.builtin.meta: flush_handlers
+
+- name: Install pinned fleet-agent version
+  ansible.builtin.apt:
+    name: "fleet-agent={{ fleet_agent_version }}"
+    state: present
+  notify: restart fleet-agent
+
+- name: Deploy device-identity.conf
+  ansible.builtin.template:
+    src: device-identity.conf.j2
+    dest: "{{ fleet_identity_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  notify: regenerate alloy config
+
+- name: Flush handlers (generate Alloy config before enabling services)
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start fleet-agent
+  ansible.builtin.systemd:
+    name: "{{ fleet_agent_service }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable and start fleet-heartbeat timer
+  ansible.builtin.systemd:
+    name: "{{ fleet_agent_timer }}"
+    enabled: true
+    state: started
+
+- name: Verify fleet-agent is active
+  ansible.builtin.command: systemctl is-active fleet-agent
+  register: agent_state
+  changed_when: false
+  failed_when: agent_state.stdout != "active"
+  retries: 5
+  delay: 3
+  until: agent_state.stdout == "active"

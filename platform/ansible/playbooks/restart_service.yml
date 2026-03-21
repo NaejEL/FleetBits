@@ -1,0 +1,44 @@
+---
+# ansible/playbooks/restart_service.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Restart a single systemd service on target devices.
+# Provides audit-friendly extra-vars (change_id, requested_by).
+#
+# Triggered by: Fleet UI → Device Detail → [Restart Service]
+# Runs via: Semaphore job template "restart-service"
+#
+# Required extra-vars:
+#   target_group   — Ansible inventory group or host
+#   service_name   — systemd unit name (without .service)
+#   change_id      — tracking ID from Fleet API
+#   requested_by   — actor
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Restart service on target hosts
+  hosts: "{{ target_group }}"
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Validate required extra-vars
+      ansible.builtin.assert:
+        that:
+          - service_name is defined and service_name != ""
+          - change_id is defined and change_id != ""
+          - requested_by is defined and requested_by != ""
+        fail_msg: "Missing required extra-vars for restart_service.yml"
+
+    - name: Restart {{ service_name }}
+      ansible.builtin.systemd:
+        name: "{{ service_name }}.service"
+        state: restarted
+        daemon_reload: true
+
+    - name: Verify {{ service_name }} is active after restart
+      ansible.builtin.command: "systemctl is-active {{ service_name }}"
+      register: svc_check
+      retries: 5
+      delay: 3
+      until: svc_check.stdout == "active"
+      changed_when: false
+      failed_when: svc_check.stdout != "active"

@@ -1,0 +1,13 @@
+# caddy/Caddyfile.dev — LOCAL DEVELOPMENT ONLY
+# Plain HTTP on :80. No TLS. No subdomain routing.
+# All services accessible via path prefix or by their exposed ports.
+#
+# Used by docker-compose.override.yml.example which mounts this file
+# instead of the production Caddyfile.
+
+:80 {
+    # Fleet UI (primary landing page)
+    handle /* {
+        reverse_proxy fleet-ui:5000
+    }
+}

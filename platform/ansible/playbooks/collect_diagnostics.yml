@@ -1,0 +1,73 @@
+---
+# ansible/playbooks/collect_diagnostics.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Collect diagnostic information from target devices and fetch it to the
+# Ansible controller. Used by operators for troubleshooting.
+#
+# Required extra-vars:
+#   target_group   — Ansible inventory group or host
+#   since          — journalctl --since value (e.g. "1 hour ago", "2026-01-15")
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Collect diagnostics from target devices
+  hosts: "{{ target_group }}"
+  become: true
+  gather_facts: true
+
+  vars:
+    diag_dir_remote: /tmp/fleet-diag-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}
+    diag_dir_local:  "{{ playbook_dir }}/../diagnostics/{{ inventory_hostname }}"
+
+  tasks:
+    - name: Create temp diagnostics directory on device
+      ansible.builtin.file:
+        path: "{{ diag_dir_remote }}"
+        state: directory
+        mode: "0700"
+
+    - name: Collect fleet-agent journal logs
+      ansible.builtin.shell: >
+        journalctl -u fleet-agent --since "{{ since | default('1 hour ago') }}"
+        --no-pager > {{ diag_dir_remote }}/fleet-agent.log
+      changed_when: false
+
+    - name: Collect system journal (errors only)
+      ansible.builtin.shell: >
+        journalctl -p err --since "{{ since | default('1 hour ago') }}"
+        --no-pager > {{ diag_dir_remote }}/system-errors.log
+      changed_when: false
+
+    - name: Collect systemd service status
+      ansible.builtin.shell: >
+        systemctl status fleet-agent fleet-heartbeat.timer tailscaled
+        --no-pager > {{ diag_dir_remote }}/service-status.txt 2>&1
+      changed_when: false
+
+    - name: Collect device identity (redact token)
+      ansible.builtin.shell: >
+        grep -v FLEET_AGENT_TOKEN {{ fleet_identity_path }}
+        > {{ diag_dir_remote }}/device-identity-redacted.conf
+      changed_when: false
+
+    - name: Collect Headscale IP and status
+      ansible.builtin.command: tailscale status
+      register: ts_status
+      changed_when: false
+      failed_when: false
+
+    - name: Write Headscale status
+      ansible.builtin.copy:
+        content: "{{ ts_status.stdout }}"
+        dest: "{{ diag_dir_remote }}/headscale-status.txt"
+        mode: "0600"
+
+    - name: Fetch diagnostics to controller
+      ansible.builtin.fetch:
+        src:  "{{ diag_dir_remote }}/"
+        dest: "{{ diag_dir_local }}/"
+        flat: false
+
+    - name: Remove temp diagnostics directory from device
+      ansible.builtin.file:
+        path: "{{ diag_dir_remote }}"
+        state: absent

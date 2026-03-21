@@ -1,0 +1,17 @@
+---
+# roles/app_config/handlers/main.yml
+
+- name: restart custom-soft
+  ansible.builtin.systemd:
+    name: custom-soft.service
+    state: restarted
+
+- name: restart zone-controller
+  ansible.builtin.systemd:
+    name: zone-controller.service
+    state: restarted
+
+- name: restart video-player
+  ansible.builtin.systemd:
+    name: video-player.service
+    state: restarted

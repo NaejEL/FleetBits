@@ -1,0 +1,29 @@
+---
+# group_vars/site_paris/vars.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Non-secret variables specific to the Paris site.
+# Secrets (API keys, passwords) that are Paris-specific go in vault.yml
+# (only needed if Paris has unique secrets beyond vault_all).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Site identity ─────────────────────────────────────────────────────────────
+site:     paris
+timezone: "Europe/Paris"
+
+# ── Zone definitions (informational — zones in inventory define groups) ────────
+# Used by Fleet API provisioning and Alertmanager quiet-hours config.
+zone_count: 2
+
+# ── MQTT broker ───────────────────────────────────────────────────────────────
+# The shared mini-PC is the MQTT broker for this site.
+broker_host: "10.0.1.10"     # internal LAN IP of the broker within the site
+broker_port: 1883
+
+# ── Quiet-hours window ───────────────────────────────────────────────────────
+# Matches the time_interval defined in alertmanager.yml for this site.
+quiet_hours_start: "02:00"
+quiet_hours_end:   "09:00"
+
+# ── Application config overrides (example — add per-service values here) ─────
+# These are rendered into templates by the app_config role.
+log_level: "info"

@@ -1,0 +1,22 @@
+---
+# group_vars/mini_pc.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Variables applied to all mini-PC / NUC type devices across every site.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Mini-PCs run more services — tighten scrape interval and enable process metrics
+scrape_interval:         "15s"
+enable_process_exporter: true
+
+# Mini-PCs may also run the site MQTT broker
+enable_mqtt_exporter:    false   # override in host_vars for the broker node
+mqtt_broker_host:        "localhost"
+mqtt_broker_port:        1883
+
+# systemd journal limits — mini-PCs have more storage
+journald_system_max_use:    "500M"
+journald_system_keep_free:  "200M"
+journald_max_retention_sec: "1209600"   # 14 days
+
+fleet_agent_watchdog_sec: 30
+apt_upgrade_on_bootstrap: false

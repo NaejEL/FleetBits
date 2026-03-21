@@ -1,0 +1,30 @@
+# docker-compose.override.behind-proxy.yml
+#
+# Use this override when the stack runs behind an upstream reverse proxy
+# (e.g. nginx on a Proxmox host). TLS is terminated upstream; Caddy serves
+# HTTP-only internally.
+#
+# Usage:
+#   docker compose \
+#     --env-file ../secrets.env \
+#     -f docker-compose.yml \
+#     -f docker-compose.override.behind-proxy.yml \
+#     up -d
+#
+# Or set in an .env file:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.override.behind-proxy.yml
+
+services:
+  caddy:
+    volumes:
+      # Override the baked-in Caddyfile with the HTTP-only variant
+      - ./caddy/Caddyfile.behind-proxy:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # No environment changes needed — Caddy reads FLEET_DOMAIN from compose env
+
+  fleet-ui:
+    environment:
+      # upstream proxy adds HTTPS, so UI links to external services use https://
+      GRAFANA_URL:    "https://grafana.${FLEET_DOMAIN}"
+      SEMAPHORE_URL:  "https://semaphore.${FLEET_DOMAIN}"

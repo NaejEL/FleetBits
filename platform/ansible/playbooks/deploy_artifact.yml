@@ -1,0 +1,39 @@
+---
+# ansible/playbooks/deploy_artifact.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy a versioned artifact (.deb package or git ref) to target devices.
+# After deployment, re-applies all service configs and verifies the service
+# is running.
+#
+# Triggered by: Fleet UI → Deployment Center → [Deploy]
+# Runs via: Semaphore job template "deploy-artifact"
+#
+# Required extra-vars:
+#   target_group     — Ansible inventory group (e.g. "paris_zone_1")
+#   artifact_type    — "deb" or "git"
+#   artifact_package — package name (deb) or git repo URL (git)
+#   artifact_ref     — version string (deb) or git ref/SHA (git)
+#   artifact_service — systemd service unit name (without .service)
+#   change_id        — tracking ID from Fleet API Deployment record
+#   requested_by     — actor (operator username)
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Deploy artifact to target hosts
+  hosts: "{{ target_group }}"
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Validate required extra-vars
+      ansible.builtin.assert:
+        that:
+          - artifact_type in ['deb', 'git']
+          - artifact_ref is defined and artifact_ref != ""
+          - artifact_package is defined and artifact_package != ""
+          - artifact_service is defined and artifact_service != ""
+          - change_id is defined and change_id != ""
+          - requested_by is defined and requested_by != ""
+        fail_msg: "Missing required extra-vars for deploy_artifact.yml"
+
+  roles:
+    - role: deploy_artifact

@@ -1,0 +1,16 @@
+---
+# roles/fleet_agent/handlers/main.yml
+
+- name: update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: regenerate alloy config
+  ansible.builtin.command: /usr/lib/fleet-agent/generate-config.sh
+  changed_when: true
+
+- name: restart fleet-agent
+  ansible.builtin.systemd:
+    name: fleet-agent
+    state: restarted
+    daemon_reload: true

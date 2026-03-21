@@ -1,0 +1,10 @@
+{
+  "broker_host":  "{{ broker_host }}",
+  "broker_port":   {{ broker_port | default(1883) }},
+  "site":          "{{ site }}",
+  "zone":          "{{ zone }}",
+  "device_id":     "{{ device_id | default(inventory_hostname) }}",
+  "device_role":   "{{ device_role }}",
+  "log_level":     "{{ log_level | default('info') }}",
+  "api_key":       "{{ vault_custom_soft_api_key }}"
+}

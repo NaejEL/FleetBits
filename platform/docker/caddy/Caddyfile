@@ -1,0 +1,62 @@
+# caddy/Caddyfile — PRODUCTION
+# All {$FLEET_DOMAIN} references expand to the value of the FLEET_DOMAIN env var.
+# Caddy obtains Let's Encrypt certificates automatically for every subdomain.
+# All upstream services are on the Docker-internal 'fleet_net' bridge network
+# and are NEVER bound to a host port in production.
+
+# ── Operator portal ───────────────────────────────────────────────────────────
+{$FLEET_DOMAIN} {
+    reverse_proxy fleet-ui:5000
+}
+
+# ── Grafana dashboards ────────────────────────────────────────────────────────
+grafana.{$FLEET_DOMAIN} {
+    reverse_proxy grafana:3000
+}
+
+# ── Fleet API (inventory, deployments, heartbeat, provision) ─────────────────
+api.{$FLEET_DOMAIN} {
+    reverse_proxy fleet-api:8000
+}
+
+# ── Prometheus remote-write receiver (edge devices push metrics here) ─────────
+# Only the remote_write and federation paths are allowed — all others return 403.
+metrics.{$FLEET_DOMAIN} {
+    @allowed path /api/v1/write /federate /metrics /api/v1/query /api/v1/query_range /api/v1/labels
+    handle @allowed {
+        reverse_proxy prometheus:9090
+    }
+    respond 403
+}
+
+# ── Loki log push endpoint (edge devices push logs here) ─────────────────────
+# Only the loki push path is allowed from the public internet.
+logs.{$FLEET_DOMAIN} {
+    @allowed path /loki/api/v1/push
+    handle @allowed {
+        reverse_proxy loki:3100
+    }
+    respond 403
+}
+
+# ── aptly private .deb repository ────────────────────────────────────────────
+repo.{$FLEET_DOMAIN} {
+    reverse_proxy aptly-api:8080
+}
+
+# ── Headscale WireGuard coordination server ───────────────────────────────────
+headscale.{$FLEET_DOMAIN} {
+    reverse_proxy headscale:8080
+}
+
+# ── Semaphore Ansible runner — WireGuard mesh ONLY ───────────────────────────
+# The 100.64.0.0/10 range is the Headscale/CGNAT address space assigned to
+# all enrolled fleet devices. Only operators on the WireGuard mesh can reach
+# Semaphore. Direct internet access returns 403.
+semaphore.{$FLEET_DOMAIN} {
+    @wireguard remote_ip 100.64.0.0/10
+    handle @wireguard {
+        reverse_proxy semaphore:3000
+    }
+    respond "Access restricted to WireGuard mesh" 403
+}

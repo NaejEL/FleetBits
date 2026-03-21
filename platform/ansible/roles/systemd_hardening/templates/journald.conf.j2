@@ -1,0 +1,8 @@
+# /etc/systemd/journald.conf.d/fleet-limits.conf
+# Managed by Ansible — roles/systemd_hardening
+[Journal]
+SystemMaxUse={{ journald_system_max_use | default('200M') }}
+SystemKeepFree={{ journald_system_keep_free | default('100M') }}
+MaxRetentionSec={{ journald_max_retention_sec | default('604800') }}
+Compress=yes
+ForwardToSyslog=no

@@ -1,0 +1,59 @@
+# prometheus/prometheus.yml
+# Remote-write receiver is enabled in the Docker Compose command args.
+# Edge devices push metrics to: https://metrics.{domain}/api/v1/write
+
+global:
+  scrape_interval:     30s
+  evaluation_interval: 30s
+  external_labels:
+    environment: production
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+
+  # ── Control-plane host metrics (node_exporter container) ───────────────────
+  - job_name: "vps_host"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          device_id: "vps-control-plane"
+          device_role: "control-plane"
+          environment: "production"
+
+  # ── Prometheus self-scrape ─────────────────────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ── Loki metrics ───────────────────────────────────────────────────────────
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+
+  # ── Grafana metrics ────────────────────────────────────────────────────────
+  - job_name: "grafana"
+    static_configs:
+      - targets: ["grafana:3000"]
+
+  # ── Alertmanager metrics ───────────────────────────────────────────────────
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]
+
+  # ── Fleet API metrics ──────────────────────────────────────────────────────
+  - job_name: "fleet_api"
+    static_configs:
+      - targets: ["fleet-api:8000"]
+    metrics_path: /metrics
+
+  # ── Edge device metrics are pushed via remote_write from Grafana Alloy ─────
+  # No scrape config needed — Prometheus remote-write receiver is enabled
+  # via --web.enable-remote-write-receiver flag in Docker Compose.
+  # All edge metrics arrive at: POST /api/v1/write

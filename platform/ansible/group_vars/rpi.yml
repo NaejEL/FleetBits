@@ -1,0 +1,22 @@
+---
+# group_vars/rpi.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Variables applied to all Raspberry Pi devices across every site.
+# More specific overrides (per-site, per-device) always win.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Alloy / observability — conserve CPU on the RPi
+scrape_interval:         "30s"
+enable_process_exporter: false   # typically not needed on RPi
+enable_mqtt_exporter:    false   # override in host_vars if this RPi runs Mosquitto
+
+# systemd journal limits — prevent filling a small SD card
+journald_system_max_use:       "200M"
+journald_system_keep_free:     "100M"
+journald_max_retention_sec:    "604800"   # 7 days
+
+# Watchdog: restart a hung fleet-agent within 30s
+fleet_agent_watchdog_sec: 30
+
+# Package management
+apt_upgrade_on_bootstrap: false   # set true to dist-upgrade during bootstrap

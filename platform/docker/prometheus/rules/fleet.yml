@@ -1,0 +1,177 @@
+# prometheus/rules/fleet.yml
+# Core alert rules for the FleetBits fleet.
+# Labels: site, zone, device_id, device_role, service, environment, ring
+# All edge metrics carry these labels (injected by Grafana Alloy via
+# generate-config.sh on each device).
+
+groups:
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # P1 — Critical: immediate operator action required
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  - name: fleet.critical
+    rules:
+
+      # systemd unit in failed state for > 2 min
+      - alert: SystemdUnitFailed
+        expr: |
+          systemd_unit_state{state="failed"} == 1
+        for: 2m
+        labels:
+          severity: P1
+        annotations:
+          summary: "{{ $labels.name }} failed on {{ $labels.device_id }}"
+          description: >
+            systemd unit {{ $labels.name }} on device {{ $labels.device_id }}
+            ({{ $labels.device_role }} in {{ $labels.site }}/{{ $labels.zone }})
+            has been in failed state for more than 2 minutes.
+          runbook: "https://wiki.internal/runbooks/systemd-unit-failed"
+
+      # Device not reporting metrics for > 5 min (proxy for device offline)
+      - alert: DeviceOffline
+        expr: |
+          (time() - max by (device_id, site, zone, device_role)
+            (last_over_time(up{job="node"}[10m]))) > 300
+          or absent(up{job="node"})
+        for: 5m
+        labels:
+          severity: P1
+        annotations:
+          summary: "Device {{ $labels.device_id }} is offline"
+          description: >
+            No metrics received from {{ $labels.device_id }}
+            ({{ $labels.site }}/{{ $labels.zone }}) for more than 5 minutes.
+
+      # MQTT broker — no connected clients (broker down or all clients disconnected)
+      - alert: MQTTBrokerDown
+        expr: |
+          absent(mqtt_connected_clients) or mqtt_connected_clients == 0
+        for: 3m
+        labels:
+          severity: P1
+        annotations:
+          summary: "MQTT broker down on {{ $labels.device_id }}"
+          description: >
+            MQTT broker on {{ $labels.device_id }}
+            ({{ $labels.site }}/{{ $labels.zone }}) reports no connected clients.
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # P2 — Warning: investigate within business hours
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  - name: fleet.warning
+    rules:
+
+      # Service restarting frequently (flapping)
+      - alert: ServiceRestartingFrequently
+        expr: |
+          increase(systemd_unit_restart_count_total[30m]) > 3
+        labels:
+          severity: P2
+        annotations:
+          summary: "{{ $labels.name }} restarted {{ $value | humanize }} times in 30m"
+          description: >
+            Service {{ $labels.name }} on {{ $labels.device_id }}
+            ({{ $labels.site }}/{{ $labels.zone }}) has restarted {{ $value }} times
+            in the last 30 minutes — likely crashing on startup.
+
+      # Disk pressure (root filesystem < 10% free)
+      - alert: DiskPressure
+        expr: |
+          (
+            node_filesystem_free_bytes{mountpoint="/", fstype!="tmpfs"}
+            / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}
+          ) < 0.10
+        for: 10m
+        labels:
+          severity: P2
+        annotations:
+          summary: "Disk full on {{ $labels.device_id }} ({{ $value | humanizePercentage }} free)"
+          description: >
+            {{ $labels.device_id }} ({{ $labels.site }}/{{ $labels.zone }})
+            has less than 10% disk space remaining on /.
+
+      # High CPU temperature (RPi thermal throttle threshold)
+      - alert: HighTemperature
+        expr: |
+          node_hwmon_temp_celsius > 75
+        for: 5m
+        labels:
+          severity: P2
+        annotations:
+          summary: "High temperature on {{ $labels.device_id }}: {{ $value }}°C"
+
+      # CPU saturation sustained > 10 min
+      - alert: CPUSaturation
+        expr: |
+          100 - (avg by (device_id, site, zone, device_role)
+            (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: P2
+        annotations:
+          summary: "CPU saturation on {{ $labels.device_id }}: {{ $value | humanize }}%"
+
+      # Memory pressure (< 10% available)
+      - alert: MemoryPressure
+        expr: |
+          (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.10
+        for: 5m
+        labels:
+          severity: P2
+        annotations:
+          summary: "Memory pressure on {{ $labels.device_id }}"
+          description: >
+            {{ $labels.device_id }} has less than 10% memory available.
+            Consider investigating memory-consuming processes.
+
+      # fleet-agent itself not reporting (agent stopped on device)
+      - alert: FleetAgentNotReporting
+        expr: |
+          (time() - max by (device_id, site, zone)
+            (last_over_time(up{job="fleet_agent"}[15m]))) > 600
+        for: 5m
+        labels:
+          severity: P2
+        annotations:
+          summary: "fleet-agent not reporting on {{ $labels.device_id }}"
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Control plane self-monitoring
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  - name: control_plane
+    rules:
+
+      # VPS disk getting full
+      - alert: ControlPlaneDiskLow
+        expr: |
+          (
+            node_filesystem_free_bytes{instance="172.17.0.1:9100", mountpoint="/"}
+            / node_filesystem_size_bytes{instance="172.17.0.1:9100", mountpoint="/"}
+          ) < 0.15
+        for: 10m
+        labels:
+          severity: P1
+        annotations:
+          summary: "Control plane VPS disk critically low"
+
+      # Prometheus TSDB getting full
+      - alert: PrometheusTSDBDiskLow
+        expr: |
+          (
+            prometheus_tsdb_storage_blocks_bytes
+            / (node_filesystem_size_bytes{instance="172.17.0.1:9100", mountpoint="/"})
+          ) > 0.70
+        for: 30m
+        labels:
+          severity: P2
+        annotations:
+          summary: "Prometheus TSDB consuming > 70% of VPS disk"
+
+      # Backup freshness (backup.sh writes this file on success)
+      - alert: BackupStale
+        expr: |
+          (time() - node_textfile_mtime_seconds{collector="backup_age"}) > 93600
+        labels:
+          severity: P2
+        annotations:
+          summary: "Fleet backup has not completed in > 26 hours"

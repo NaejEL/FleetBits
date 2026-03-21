@@ -1,0 +1,52 @@
+---
+# group_vars/all/vault.yml.example
+# ─────────────────────────────────────────────────────────────────────────────
+# Template for the encrypted vault.  The real vault.yml is committed
+# as ciphertext — create it with:
+#
+#   ansible-vault create group_vars/all/vault.yml \
+#     --vault-password-file ~/.fleet-vault-pass
+#
+# Then paste the keys below and fill in real values.
+# NEVER commit this example file with real secrets.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── aptly GPG signing key ──────────────────────────────────────────────────
+vault_aptly_gpg_key_passphrase: "CHANGE_ME"
+
+# ── PostgreSQL ─────────────────────────────────────────────────────────────
+vault_postgres_password:    "CHANGE_ME"      # root postgres superuser
+vault_fleet_db_password:    "CHANGE_ME"      # fleet database user
+vault_semaphore_db_password: "CHANGE_ME"     # semaphore database user
+
+# ── Grafana ────────────────────────────────────────────────────────────────
+vault_grafana_admin_password: "CHANGE_ME"
+
+# ── Semaphore ──────────────────────────────────────────────────────────────
+vault_semaphore_api_key: "CHANGE_ME"
+
+# ── Headscale enrollment ───────────────────────────────────────────────────
+# Reusable pre-auth key for enrolling new devices.
+# Generated with: docker exec headscale headscale preauthkeys create \
+#   --user fleet --reusable=true --expiration 24h
+# Rotate after each provisioning session.
+vault_headscale_preauth_key: "tskey-auth-CHANGE_ME"
+
+# ── Fleet API bootstrap tokens ─────────────────────────────────────────────
+# One per site. Used only by bootstrap_device.yml to POST /api/v1/devices.
+# NOT the same as per-device runtime tokens (those are returned by the API).
+vault_fleet_bootstrap_token_paris: "CHANGE_ME"
+vault_fleet_bootstrap_token_lyon:  "CHANGE_ME"
+
+# ── Application software secrets (examples — add as needed) ───────────────
+vault_custom_soft_api_key:         "CHANGE_ME"
+vault_zone_controller_license:     "CHANGE_ME"
+vault_mqtt_broker_password:        "CHANGE_ME"
+vault_video_player_license_key:    "CHANGE_ME"
+
+# ── NOT here ──────────────────────────────────────────────────────────────
+#   vault_fleet_agent_token_paris_zone1_01: "..."   ← NEVER do this
+#   vault_fleet_agent_token_paris_zone1_02: "..."   ← you have 350 devices
+# Per-device runtime tokens are issued automatically by Fleet API during
+# bootstrap_device.yml and written directly to the device. They are never
+# stored in the vault.

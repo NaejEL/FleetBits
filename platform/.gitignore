@@ -1,0 +1,54 @@
+# Secrets — never commit these
+secrets.env
+.env
+*.secret
+ansible/.vault_pass
+ansible/.vault_pass.txt
+~/.fleet-vault-pass
+
+# Ansible vault password file (can be anywhere — pattern-matched)
+.vault_password_file
+vault-password.txt
+
+# Docker local overrides — local-only, not for production
+docker/docker-compose.override.yml
+
+# Ansible generated files
+ansible/*.retry
+ansible/.ansible_facts/
+ansible/tmp/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python (for local Ansible runs)
+__pycache__/
+*.pyc
+*.pyo
+.tox/
+
+# Temporary
+*.log
+*.tmp
+*.bak
+
+# Headscale state (local dev only — never commit persistent WireGuard state)
+docker/headscale/db.sqlite*
+docker/headscale/noise_*
+
+# aptly local state
+docker/aptly/data/
+
+# Grafana local state (dashboards are committed as JSON, not DB)
+docker/grafana/data/
+
+# Prometheus local TSDB
+docker/prometheus/data/
+
+# Loki local chunks
+docker/loki/data/

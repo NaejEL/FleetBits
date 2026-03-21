@@ -1,0 +1,7 @@
+{
+  "site":        "{{ site }}",
+  "zone":        "{{ zone }}",
+  "device_id":   "{{ device_id | default(inventory_hostname) }}",
+  "log_level":   "{{ log_level | default('info') }}",
+  "license_key": "{{ vault_video_player_license_key }}"
+}

@@ -1,0 +1,44 @@
+---
+# ansible/playbooks/rollback_artifact.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Roll back a service to a previous artifact version.
+# Semantically identical to deploy_artifact.yml — the caller provides
+# the previous known-good version as `rollback_ref`.
+#
+# Triggered by: Fleet UI → Deployment Center → [Rollback]
+# Runs via: Semaphore job template "rollback-artifact"
+#
+# Required extra-vars:
+#   target_group     — Ansible inventory group
+#   artifact_type    — "deb" or "git"
+#   artifact_package — package name or repo URL
+#   rollback_ref     — the previous good version to restore to
+#   artifact_service — systemd service unit name
+#   change_id        — tracking ID
+#   requested_by     — actor
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Roll back artifact on target hosts
+  hosts: "{{ target_group }}"
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Validate required extra-vars
+      ansible.builtin.assert:
+        that:
+          - artifact_type in ['deb', 'git']
+          - rollback_ref is defined and rollback_ref != ""
+          - artifact_package is defined and artifact_package != ""
+          - artifact_service is defined and artifact_service != ""
+          - change_id is defined and change_id != ""
+          - requested_by is defined and requested_by != ""
+        fail_msg: "Missing required extra-vars for rollback_artifact.yml"
+
+    # Map rollback_ref → artifact_ref so deploy_artifact role works unchanged
+    - name: Set artifact_ref to rollback_ref
+      ansible.builtin.set_fact:
+        artifact_ref: "{{ rollback_ref }}"
+
+  roles:
+    - role: deploy_artifact

@@ -1,0 +1,31 @@
+---
+# ansible/playbooks/site.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Full device setup — used for newly-prepared devices and post-recovery.
+# Equivalent to running every role in order.
+#
+# Assumes the device has already been enrolled (fleet-agent installed,
+# device-identity.conf deployed, Headscale mesh joined). If not, run
+# bootstrap_device.yml first.
+#
+# Usage:
+#   # Set up all Paris devices:
+#   ansible-playbook playbooks/site.yml -i inventories/prod/ --limit site_paris
+#
+#   # Recover a single device after SD card replacement:
+#   ansible-playbook playbooks/site.yml -i inventories/prod/ --limit rpi-paris-zone1-02
+#
+#   # New device just added to inventory:
+#   ansible-playbook playbooks/site.yml -i inventories/prod/ \
+#     --limit rpi-nice-jungle-01 -e "fleet_agent_version=1.2.3"
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Full device setup
+  hosts: "{{ target_group | default('all') }}"
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: systemd_hardening
+    - role: fleet_agent
+    - role: app_config

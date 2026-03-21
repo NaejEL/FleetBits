@@ -1,0 +1,73 @@
+# docker-compose.override.yml — LOCAL DEVELOPMENT ONLY
+# This file is gitignored. Never commit it.
+#
+# It overrides the production compose file so that:
+#   - fleet-api and fleet-ui are built from sibling directories
+#   - Services are reachable directly on localhost ports for debugging
+#   - Caddy uses plain HTTP (no TLS)
+#   - PostgreSQL port is exposed for direct psql / DBeaver access
+#
+# Usage: just run `docker compose up -d` — Compose auto-merges this file.
+
+services:
+
+  caddy:
+    # Use the dev Caddyfile (plain HTTP, no TLS) from the directory mounted by the base compose.
+    # No extra volume mount needed — ./caddy/ is already at /etc/caddy/ via docker-compose.yml.
+    command: caddy run --config /etc/caddy/Caddyfile.dev --adapter caddyfile
+    environment:
+      FLEET_DOMAIN: "localhost"
+
+  prometheus:
+    ports:
+      - "9090:9090"
+
+  grafana:
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+
+  loki:
+    ports:
+      - "3100:3100"
+
+  alertmanager:
+    ports:
+      - "9093:9093"
+
+  semaphore:
+    ports:
+      - "3001:3000"
+
+  postgresql:
+    ports:
+      - "5432:5432"
+
+  fleet-api:
+    # Build from sibling repo instead of pulling from registry
+    build:
+      context: ../../FleetBits-api
+      dockerfile: Dockerfile
+    image: fleetbits-api:dev
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://fleet:${FLEET_DB_PASSWORD}@postgresql:5432/fleet"
+      FLEET_ENV: "development"
+      FLEET_API_URL: "http://localhost:8000"
+
+  fleet-ui:
+    # Build from sibling repo instead of pulling from registry
+    build:
+      context: ../../FleetBits-ui
+      dockerfile: Dockerfile
+    image: fleetbits-ui:dev
+    ports:
+      - "5000:5000"
+    environment:
+      FLEET_API_URL: "http://fleet-api:8000"
+      GRAFANA_URL: "http://grafana:3000"
+      SEMAPHORE_URL: "http://localhost:3001"
+      FLEET_ENV: "development"

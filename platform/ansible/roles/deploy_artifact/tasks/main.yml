@@ -1,0 +1,83 @@
+---
+# roles/deploy_artifact/tasks/main.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Generic artifact deployment: install a .deb package OR checkout a git ref.
+# After deployment, re-applies all service configs (app_config role) so that
+# a badly-packaged deb cannot silently overwrite config files.
+#
+# Required extra-vars (set by Semaphore job template):
+#   artifact_type     — "deb" or "git"
+#   artifact_ref      — version string (deb) or git ref/SHA (git)
+#   artifact_package  — package name (deb) or repo URL (git)
+#   artifact_service  — systemd service name to restart after deploy
+#   change_id         — change tracking identifier
+#   requested_by      — actor triggering the deployment
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── .deb deployment ───────────────────────────────────────────────────────────
+- name: Deploy deb package
+  when: artifact_type == "deb"
+  block:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install pinned package version
+      ansible.builtin.apt:
+        name: "{{ artifact_package }}={{ artifact_ref }}"
+        state: present
+      register: apt_install_result
+
+# ── git deployment ────────────────────────────────────────────────────────────
+- name: Deploy git-managed artifact
+  when: artifact_type == "git"
+  block:
+    - name: Resolve git ref to commit SHA (runs on controller)
+      ansible.builtin.command: >
+        git ls-remote {{ artifact_package }} {{ artifact_ref }}
+      register: git_resolve
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Fail if ref not found in remote
+      ansible.builtin.fail:
+        msg: "Ref '{{ artifact_ref }}' not found in {{ artifact_package }}"
+      when: git_resolve.stdout == ""
+
+    - name: Ensure deployment directory exists
+      ansible.builtin.file:
+        path: "/opt/{{ artifact_service }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Checkout resolved git ref
+      ansible.builtin.git:
+        repo:    "{{ artifact_package }}"
+        dest:    "/opt/{{ artifact_service }}"
+        version: "{{ artifact_ref }}"
+        force:   false
+
+# ── Post-deployment: restore configs ─────────────────────────────────────────
+# Run app_config after every deployment to repair any config files that a
+# package upgrade may have overwritten (idempotent — no-op if files are intact).
+- name: Re-apply all service config files
+  ansible.builtin.import_role:
+    name: app_config
+
+# ── Restart + verify ──────────────────────────────────────────────────────────
+- name: Restart service
+  ansible.builtin.systemd:
+    name: "{{ artifact_service }}.service"
+    state: restarted
+    daemon_reload: true
+
+- name: Verify service is active after deployment
+  ansible.builtin.command: systemctl is-active "{{ artifact_service }}"
+  register: svc_state
+  retries: 5
+  delay: 3
+  until: svc_state.stdout == "active"
+  changed_when: false
+  failed_when: svc_state.stdout != "active"

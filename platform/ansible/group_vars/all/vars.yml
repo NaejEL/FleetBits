@@ -1,0 +1,47 @@
+---
+# group_vars/all/vars.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Fleet-wide defaults — inherited by every device.
+# Site-specific overrides live in group_vars/site_<slug>/vars.yml.
+# Per-device overrides live in host_vars/<hostname>.yml.
+# Secrets live in group_vars/all/vault.yml (ansible-vault encrypted).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Connection ────────────────────────────────────────────────────────────────
+ansible_user: fleet
+ansible_python_interpreter: /usr/bin/python3
+
+# ── Fleet control plane URLs ──────────────────────────────────────────────────
+# Override per site if you run a secondary control plane.
+fleet_metrics_url: "https://metrics.fleet.example.com/api/v1/write"
+fleet_logs_url:    "https://logs.fleet.example.com/loki/api/v1/push"
+fleet_api_url:     "https://api.fleet.example.com"
+fleet_repo_url:    "https://repo.fleet.example.com"
+headscale_url:     "https://headscale.fleet.example.com"
+
+# ── aptly – private deb repo ──────────────────────────────────────────────────
+aptly_gpg_key_id:    "PLACEHOLDER"                        # public key fingerprint
+aptly_repo_suite:    "stable"
+aptly_repo_component: "main"
+
+# ── fleet-agent ───────────────────────────────────────────────────────────────
+fleet_agent_service:   "fleet-agent"
+fleet_agent_timer:     "fleet-heartbeat.timer"
+fleet_identity_path:   "/etc/fleet/device-identity.conf"
+
+# ── Alloy config ──────────────────────────────────────────────────────────────
+alloy_config_path: "/etc/alloy/config.alloy"
+
+# ── Observability defaults ────────────────────────────────────────────────────
+scrape_interval:           "30s"
+enable_mqtt_exporter:      false   # set true in host_vars if device runs Mosquitto
+enable_process_exporter:   false   # set true in host_vars for mini-PCs
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_level: "info"       # overridable per device in host_vars
+
+# ── Deployment defaults ───────────────────────────────────────────────────────
+artifact_package:  ""         # set by Semaphore extra-vars per job
+artifact_version:  ""
+artifact_service:  ""
+artifact_type:     "deb"      # "deb" | "git"

@@ -1,0 +1,366 @@
+#!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+    First-run local development setup for the FleetBits platform.
+
+.DESCRIPTION
+    Generates random secrets, writes secrets.env, activates the dev
+    docker-compose override, and brings the full stack up.
+
+    Safe to re-run: existing secrets.env and override file are not
+    overwritten unless you pass -Force.
+
+.PARAMETER Force
+    Overwrite secrets.env and docker-compose.override.yml even if they
+    already exist.
+
+.PARAMETER NoBuild
+    Skip `docker compose up` at the end (just write config files).
+
+.EXAMPLE
+    .\dev-setup.ps1
+    .\dev-setup.ps1 -Force
+    .\dev-setup.ps1 -NoBuild
+#>
+
+param(
+    [switch]$Force,
+    [switch]$NoBuild
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+function Write-Step([string]$msg) {
+    Write-Host "`n==> $msg" -ForegroundColor Cyan
+}
+
+function Write-OK([string]$msg) {
+    Write-Host "    ✓ $msg" -ForegroundColor Green
+}
+
+function Write-Skip([string]$msg) {
+    Write-Host "    ~ $msg (already exists — use -Force to overwrite)" -ForegroundColor Yellow
+}
+
+function New-RandomSecret([int]$bytes = 32) {
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $buf = New-Object byte[] $bytes
+    $rng.GetBytes($buf)
+    return [Convert]::ToBase64String($buf)
+}
+
+function New-RandomHex([int]$bytes = 32) {
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $buf = New-Object byte[] $bytes
+    $rng.GetBytes($buf)
+    return [System.BitConverter]::ToString($buf).Replace("-", "").ToLower()
+}
+
+# ── Locate repo root ──────────────────────────────────────────────────────────
+
+$RepoRoot   = $PSScriptRoot                                   # FleetBits-platform/
+$DockerDir  = Join-Path $RepoRoot "docker"
+$ApiRepo    = Join-Path $RepoRoot ".." "FleetBits-api"
+$SecretsEnv = Join-Path $RepoRoot "secrets.env"
+$Override   = Join-Path $DockerDir "docker-compose.override.yml"
+
+Write-Host ""
+Write-Host "FleetBits — Local Dev Setup" -ForegroundColor White
+Write-Host "Platform root : $RepoRoot"
+Write-Host "Docker dir    : $DockerDir"
+Write-Host "API repo      : $ApiRepo"
+
+# ── Check prerequisites ───────────────────────────────────────────────────────
+
+Write-Step "Checking prerequisites"
+
+$dockerOk = $null
+try { $dockerOk = docker info 2>$null } catch {}
+if (-not $dockerOk) {
+    Write-Host "ERROR: Docker is not running or not installed." -ForegroundColor Red
+    exit 1
+}
+Write-OK "Docker is running"
+
+if (-not (Test-Path $DockerDir)) {
+    Write-Host "ERROR: docker/ directory not found at $DockerDir" -ForegroundColor Red
+    exit 1
+}
+Write-OK "docker/ directory found"
+
+if (-not (Test-Path $ApiRepo)) {
+    Write-Host "WARNING: FleetBits-api repo not found at $ApiRepo" -ForegroundColor Yellow
+    Write-Host "         The fleet-api container will NOT be built from source." -ForegroundColor Yellow
+    Write-Host "         Clone it as a sibling to FleetBits-platform and re-run." -ForegroundColor Yellow
+    $ApiAvailable = $false
+} else {
+    Write-OK "FleetBits-api repo found"
+    $ApiAvailable = $true
+}
+
+$UiRepo = Join-Path $RepoRoot ".." "FleetBits-ui"
+if (-not (Test-Path $UiRepo)) {
+    Write-Host "WARNING: FleetBits-ui repo not found at $UiRepo" -ForegroundColor Yellow
+    $UiAvailable = $false
+} else {
+    Write-OK "FleetBits-ui repo found"
+    $UiAvailable = $true
+}
+
+# ── Generate secrets ──────────────────────────────────────────────────────────
+
+Write-Step "Generating secrets"
+
+$postgresPassword   = New-RandomSecret 18
+$fleetDbPassword    = New-RandomSecret 18
+$semaphoreDbPassword = New-RandomSecret 18
+$grafanaAdminPw     = New-RandomSecret 18
+$semaphoreApiKey    = New-RandomHex 32
+$fleetJwtSecret     = New-RandomSecret 48
+$operatorPassword   = New-RandomSecret 16
+
+Write-OK "Secrets generated"
+
+# ── Write secrets.env ─────────────────────────────────────────────────────────
+
+Write-Step "Writing secrets.env"
+
+if ((Test-Path $SecretsEnv) -and -not $Force) {
+    Write-Skip "secrets.env"
+    # Read existing values so we can pass them to the API .env below
+    # Join lines into one string before ConvertFrom-StringData — piping line-by-line
+    # returns an array of hashtables, not a single hashtable, causing Int32 cast errors.
+    $raw = (Get-Content $SecretsEnv | Where-Object { $_ -match "^\w.*=" }) -join "`n"
+    $existing = $raw | ConvertFrom-StringData
+    $fleetJwtSecret     = $existing["FLEET_JWT_SECRET"]     ?? $fleetJwtSecret
+    $semaphoreApiKey    = $existing["SEMAPHORE_API_KEY"]    ?? $semaphoreApiKey
+    $fleetDbPassword    = $existing["FLEET_DB_PASSWORD"]    ?? $fleetDbPassword
+    $operatorPassword   = $existing["OPERATOR_PASSWORD"]    ?? $operatorPassword
+} else {
+    @"
+# ============================================================
+# FleetBits Platform — LOCAL DEV secrets
+# Generated by dev-setup.ps1 — DO NOT COMMIT
+# ============================================================
+
+FLEET_DOMAIN=localhost
+
+POSTGRES_PASSWORD=$postgresPassword
+FLEET_DB_PASSWORD=$fleetDbPassword
+SEMAPHORE_DB_PASSWORD=$semaphoreDbPassword
+
+GRAFANA_ADMIN_PASSWORD=$grafanaAdminPw
+
+SEMAPHORE_API_KEY=$semaphoreApiKey
+
+FLEET_JWT_SECRET=$fleetJwtSecret
+
+FLEET_API_INTERNAL_URL=http://fleet-api:8000
+GRAFANA_INTERNAL_URL=http://grafana:3000
+
+APTLY_GPG_KEY_ID=
+
+FLEET_ENV=development
+
+# Operator login for Fleet UI (written to FleetBits-api/.env by this script)
+OPERATOR_USERNAME=admin
+OPERATOR_PASSWORD=$operatorPassword
+"@ | Set-Content -Encoding utf8 $SecretsEnv
+    Write-OK "secrets.env written  (operator login: admin / $operatorPassword)"
+}
+
+# ── Write docker-compose.override.yml ─────────────────────────────────────────
+
+Write-Step "Writing docker/docker-compose.override.yml"
+
+if ((Test-Path $Override) -and -not $Force) {
+    Write-Skip "docker-compose.override.yml"
+} else {
+    $apiBuildBlock = if ($ApiAvailable) {
+        @"
+  fleet-api:
+    build:
+      context: ../../FleetBits-api
+      dockerfile: Dockerfile
+    image: fleetbits-api:dev
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://fleet:`${FLEET_DB_PASSWORD}@postgresql:5432/fleet"
+      FLEET_ENV: "development"
+      FLEET_API_URL: "http://localhost:8000"
+      OPERATOR_USERNAME: "`${OPERATOR_USERNAME}"
+      OPERATOR_PASSWORD: "`${OPERATOR_PASSWORD}"
+"@
+    } else { "" }
+
+    $uiBuildBlock = if ($UiAvailable) {
+        @"
+  fleet-ui:
+    build:
+      context: ../../FleetBits-ui
+      dockerfile: Dockerfile
+    image: fleetbits-ui:dev
+    ports:
+      - "5000:5000"
+    environment:
+      FLEET_API_URL: "http://fleet-api:8000"
+      GRAFANA_URL: "http://grafana:3000"
+      SEMAPHORE_URL: "http://localhost:3001"
+      FLEET_ENV: "development"
+      SECRET_KEY: "`${FLEET_JWT_SECRET}"
+"@
+    } else { "" }
+
+    @"
+# docker-compose.override.yml — LOCAL DEV
+# Generated by dev-setup.ps1 — DO NOT COMMIT
+
+services:
+
+  caddy:
+    # Use the dev Caddyfile (plain HTTP, no TLS).
+    # ./caddy/ is already mounted to /etc/caddy/ by the base compose.
+    command: caddy run --config /etc/caddy/Caddyfile.dev --adapter caddyfile
+    environment:
+      FLEET_DOMAIN: "localhost"
+
+  prometheus:
+    ports:
+      - "9090:9090"
+
+  grafana:
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+
+  loki:
+    ports:
+      - "3100:3100"
+
+  alertmanager:
+    ports:
+      - "9093:9093"
+
+  semaphore:
+    ports:
+      - "3001:3000"
+
+  postgresql:
+    ports:
+      - "5432:5432"
+
+$apiBuildBlock
+$uiBuildBlock
+"@ | Set-Content -Encoding utf8 $Override
+    Write-OK "docker-compose.override.yml written"
+}
+
+# ── Write FleetBits-api .env ──────────────────────────────────────────────────
+
+if ($ApiAvailable) {
+    Write-Step "Writing FleetBits-api/.env"
+    $apiEnv = Join-Path $ApiRepo ".env"
+    if ((Test-Path $apiEnv) -and -not $Force) {
+        Write-Skip "FleetBits-api/.env"
+    } else {
+        @"
+# FleetBits API — local dev
+# Generated by dev-setup.ps1 — DO NOT COMMIT
+
+DATABASE_URL=postgresql+asyncpg://fleet:$fleetDbPassword@localhost:5432/fleet
+
+SEMAPHORE_URL=http://localhost:3001
+SEMAPHORE_API_KEY=$semaphoreApiKey
+SEMAPHORE_PROJECT_ID=1
+SEMAPHORE_DEPLOY_TEMPLATE_ID=1
+SEMAPHORE_ROLLBACK_TEMPLATE_ID=2
+SEMAPHORE_RESTART_TEMPLATE_ID=3
+SEMAPHORE_DIAGNOSTICS_TEMPLATE_ID=4
+SEMAPHORE_LOGS_TEMPLATE_ID=5
+
+FLEET_JWT_SECRET=$fleetJwtSecret
+FLEET_JWT_ALGORITHM=HS256
+FLEET_JWT_EXPIRE_MINUTES=480
+
+PROMETHEUS_URL=http://localhost:9090
+LOKI_URL=http://localhost:3100
+ALERTMANAGER_URL=http://localhost:9093
+
+FLEET_ENV=development
+FLEET_API_URL=http://localhost:8000
+
+OPERATOR_USERNAME=admin
+OPERATOR_PASSWORD=$operatorPassword
+"@ | Set-Content -Encoding utf8 $apiEnv
+        Write-OK "FleetBits-api/.env written"
+    }
+}
+
+# ── Write FleetBits-ui .env ───────────────────────────────────────────────────
+
+if ($UiAvailable) {
+    Write-Step "Writing FleetBits-ui/.env"
+    $uiEnv = Join-Path $UiRepo ".env"
+    if ((Test-Path $uiEnv) -and -not $Force) {
+        Write-Skip "FleetBits-ui/.env"
+    } else {
+        @"
+# FleetBits UI — local dev
+# Generated by dev-setup.ps1 — DO NOT COMMIT
+
+SECRET_KEY=$fleetJwtSecret
+FLEET_API_URL=http://localhost:8000
+GRAFANA_URL=http://localhost:3000
+SEMAPHORE_URL=http://localhost:3001
+FLEET_DOMAIN=localhost
+FLEET_ENV=development
+"@ | Set-Content -Encoding utf8 $uiEnv
+        Write-OK "FleetBits-ui/.env written"
+    }
+}
+
+# ── docker compose up ─────────────────────────────────────────────────────────
+
+if ($NoBuild) {
+    Write-Host "`nSkipping docker compose (--NoBuild passed)." -ForegroundColor Yellow
+} else {
+    Write-Step "Starting stack  (docker compose up --build -d)"
+    Write-Host "    This may take a few minutes on first run while images are pulled/built."
+
+    Push-Location $DockerDir
+    try {
+        docker compose --env-file ../secrets.env up --build -d
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: docker compose exited with code $LASTEXITCODE" -ForegroundColor Red
+            exit $LASTEXITCODE
+        }
+    } finally {
+        Pop-Location
+    }
+    Write-OK "Stack is up"
+}
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+Write-Host ""
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor White
+Write-Host " FleetBits dev stack ready" -ForegroundColor Green
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor White
+Write-Host ""
+Write-Host "  Fleet UI        http://localhost        (login: admin / $operatorPassword)"
+Write-Host "  Fleet API docs  http://localhost:8000/docs"
+Write-Host "  Grafana         http://localhost:3000   (admin / $grafanaAdminPw)"
+Write-Host "  Semaphore       http://localhost:3001"
+Write-Host "  Prometheus      http://localhost:9090"
+Write-Host ""
+Write-Host "  Credentials are saved in secrets.env — keep it private." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  To stop:   docker compose --env-file secrets.env -f docker/docker-compose.yml down" -ForegroundColor DarkGray
+Write-Host "  To reset:  .\dev-setup.ps1 -Force" -ForegroundColor DarkGray
+Write-Host ""

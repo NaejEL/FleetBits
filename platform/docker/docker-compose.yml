@@ -1,0 +1,271 @@
+# FleetBits — Control Plane Docker Compose
+#
+# Usage (production VPS):
+#   docker compose --env-file ../secrets.env up -d
+#
+# Usage (local dev):
+#   Copy docker-compose.override.yml.example → docker-compose.override.yml
+#   docker compose --env-file ../secrets.env up -d
+#
+# The 'version' key is intentionally omitted — it is deprecated in Compose v2
+# (Docker Engine 23+).
+
+services:
+
+  # ─── WireGuard coordination server ──────────────────────────────────────────
+  headscale:
+    build:
+      context: ./headscale
+    container_name: headscale
+    volumes:
+      - headscale_data:/var/lib/headscale
+    command: serve
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Metrics store ──────────────────────────────────────────────────────────
+  prometheus:
+    build:
+      context: ./prometheus
+    container_name: prometheus
+    volumes:
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-remote-write-receiver"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Log store ──────────────────────────────────────────────────────────────
+  loki:
+    build:
+      context: ./loki
+    container_name: loki
+    volumes:
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki.yml
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Alert routing ──────────────────────────────────────────────────────────
+  alertmanager:
+    build:
+      context: ./alertmanager
+    container_name: alertmanager
+    volumes:
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Dashboards + alerting UI ───────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    container_name: grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Ansible job runner ─────────────────────────────────────────────────────
+  semaphore:
+    image: semaphoreui/semaphore:v2.10.22
+    container_name: semaphore
+    environment:
+      SEMAPHORE_DB_DIALECT: postgres
+      SEMAPHORE_DB_HOST: postgresql
+      SEMAPHORE_DB_PORT: "5432"
+      SEMAPHORE_DB_NAME: semaphore
+      SEMAPHORE_DB_USER: semaphore
+      SEMAPHORE_DB_PASS: "${SEMAPHORE_DB_PASSWORD}"
+      SEMAPHORE_PLAYBOOK_PATH: /tmp/semaphore
+      SEMAPHORE_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      SEMAPHORE_ADMIN_NAME: admin
+      SEMAPHORE_ADMIN_EMAIL: admin@fleetbits.local
+      SEMAPHORE_ADMIN: admin
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: "${FLEET_JWT_SECRET}"
+    volumes:
+      - semaphore_data:/var/lib/semaphore
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Fleet inventory + deployment API ───────────────────────────────────────
+  fleet-api:
+    image: ghcr.io/naejel/fleetbits-api:latest
+    container_name: fleet-api
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://fleet:${FLEET_DB_PASSWORD}@postgresql:5432/fleet"
+      SEMAPHORE_URL: "http://semaphore:3000"
+      SEMAPHORE_API_KEY: "${SEMAPHORE_API_KEY}"
+      FLEET_JWT_SECRET: "${FLEET_JWT_SECRET}"
+      PROMETHEUS_URL: "http://prometheus:9090"
+      LOKI_URL: "http://loki:3100"
+      ALERTMANAGER_URL: "http://alertmanager:9093"
+      FLEET_ENV: "${FLEET_ENV:-production}"
+      FLEET_API_URL: "https://api.${FLEET_DOMAIN}"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Operator web UI ────────────────────────────────────────────────────────
+  fleet-ui:
+    image: ghcr.io/naejel/fleetbits-ui:latest
+    container_name: fleet-ui
+    environment:
+      SECRET_KEY: "${FLEET_JWT_SECRET}"
+      FLEET_API_URL: "http://fleet-api:8000"
+      GRAFANA_URL: "https://grafana.${FLEET_DOMAIN}"
+      SEMAPHORE_URL: "https://semaphore.${FLEET_DOMAIN}"
+      FLEET_DOMAIN: "${FLEET_DOMAIN}"
+      FLEET_ENV: "${FLEET_ENV:-production}"
+    depends_on:
+      - fleet-api
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Database ───────────────────────────────────────────────────────────────
+  postgresql:
+    build:
+      context: ./postgresql
+    container_name: postgresql
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      FLEET_DB_PASSWORD: "${FLEET_DB_PASSWORD}"
+      SEMAPHORE_DB_PASSWORD: "${SEMAPHORE_DB_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Private .deb repository ────────────────────────────────────────────────
+  aptly-api:
+    build:
+      context: ./aptly
+      dockerfile: Dockerfile
+    container_name: aptly-api
+    volumes:
+      - aptly_data:/root/.aptly
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Host metrics exporter ──────────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    command:
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    # On a production Linux VPS add these for full host-level metrics:
+    # pid: host
+    # volumes:
+    #   - /:/host:ro,rslave
+    # And add --path.rootfs=/host to command.
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── VPS control-plane device (self-monitoring via fleet-agent) ─────────────
+  # This container runs the fleet-agent on the platform host itself.
+  # It registers the VPS as a managed fleet device so you can observe
+  # the platform's own metrics/logs in Grafana and test the full
+  # build → aptly → apt-install CI/CD pipeline.
+  #
+  # Bootstrap (once): scripts/enroll-vps.ps1
+  # After running that script VPS_DEVICE_TOKEN is written to secrets.env
+  # and docker compose up -d vps-device starts the container.
+  vps-device:
+    build:
+      context: ../../FleetBits-agent
+      dockerfile: Dockerfile.container
+    image: fleetbits/vps-device:latest
+    container_name: vps-device
+    environment:
+      SITE_ID:             "control-plane"
+      ZONE_ID:             "vps"
+      DEVICE_ID:           "vps-control-plane"
+      DEVICE_ROLE:         "control-plane-vps"
+      FLEET_API_URL:       "http://fleet-api:8000"
+      FLEET_AGENT_TOKEN:   "${VPS_DEVICE_TOKEN}"
+      FLEET_METRICS_URL:   "http://prometheus:9090/api/v1/write"
+      FLEET_LOGS_URL:      "http://loki:3100/loki/api/v1/push"
+      RING:                "0"
+      ENVIRONMENT:         "${FLEET_ENV:-development}"
+      SCRAPE_INTERVAL:     "30s"
+    depends_on:
+      - fleet-api
+      - prometheus
+      - loki
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── TLS-terminating reverse proxy ──────────────────────────────────────────
+  caddy:
+    build:
+      context: ./caddy
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      FLEET_DOMAIN: "${FLEET_DOMAIN}"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+# ─── Named volumes ────────────────────────────────────────────────────────────
+volumes:
+  headscale_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  alertmanager_data:
+  semaphore_data:
+  postgresql_data:
+  aptly_data:
+  caddy_data:
+  caddy_config:
+
+# ─── Network ──────────────────────────────────────────────────────────────────
+networks:
+  fleet_net:
+    driver: bridge

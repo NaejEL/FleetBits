@@ -1,0 +1,20 @@
+{
+  "ConnectionStrings": {},
+  "Fleet": {
+    "Site":       "{{ site }}",
+    "Zone":       "{{ zone }}",
+    "DeviceId":   "{{ device_id | default(inventory_hostname) }}",
+    "DeviceRole": "{{ device_role }}"
+  },
+  "Mqtt": {
+    "BrokerHost": "{{ broker_host }}",
+    "BrokerPort":  {{ broker_port | default(1883) }},
+    "Password":   "{{ vault_mqtt_broker_password }}"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "{{ log_level | default('Information') | capitalize }}"
+    }
+  },
+  "LicenseKey": "{{ vault_zone_controller_license }}"
+}
