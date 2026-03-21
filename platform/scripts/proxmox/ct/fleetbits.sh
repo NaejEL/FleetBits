@@ -119,6 +119,19 @@ pct create "${CTID}" "${TEMPLATE_STORAGE}:vztmpl/${DEBIAN_TEMPLATE}" \
 
 success "Container CT${CTID} created."
 
+# ── Apply sysctl settings required by Docker inside unprivileged LXC ──────────
+# Docker on recent kernels needs net.ipv4.ip_unprivileged_port_start to be set
+# at the LXC level; Docker itself cannot write it from inside the container.
+info "Configuring sysctl for Docker compatibility..."
+pct set "${CTID}" --features "nesting=1,keyctl=1" 2>/dev/null || true
+
+# Write lxc.sysctl directly into the LXC config file (pct set has no --lxc flag)
+LXC_CONF="/etc/pve/lxc/${CTID}.conf"
+if ! grep -q "lxc.sysctl.net.ipv4.ip_unprivileged_port_start" "${LXC_CONF}" 2>/dev/null; then
+    echo "lxc.sysctl.net.ipv4.ip_unprivileged_port_start = 0" >> "${LXC_CONF}"
+    success "sysctl net.ipv4.ip_unprivileged_port_start = 0 added to CT${CTID} config."
+fi
+
 # ── Start the container ────────────────────────────────────────────────────────
 info "Starting CT${CTID}..."
 pct start "${CTID}"
