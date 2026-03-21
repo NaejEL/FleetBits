@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     FLEET_ENV: str = "development"
     FLEET_API_URL: str = "http://localhost:8000"
 
-    # Operator login credentials (single admin user for V1)
+    # Bootstrap admin credentials — used ONLY to seed the first admin user
+    # when the fleet_user table is empty.  Change via the UI or API afterwards;
+    # these env vars are ignored once any user exists in the database.
     OPERATOR_USERNAME: str = "admin"
     OPERATOR_PASSWORD: str = "change-me-immediately"
 

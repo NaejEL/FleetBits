@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime
 
@@ -7,6 +8,11 @@ from pydantic import BaseModel, ConfigDict, field_validator
 _VALID_ARTIFACT_TYPES = ("deb", "git")
 _VALID_ROLLOUT_MODES = ("ring-0", "ring-1", "ring-2", "hotfix", "rollback")
 _VALID_RECON_POLICIES = ("promote", "revert", "decide-later")
+
+# Permit safe package version / git ref chars; rejects shell metacharacters
+_ARTIFACT_REF_RE = re.compile(r"^[a-zA-Z0-9\-_.+~:/@]{1,256}$")
+# Safe Ansible inventory pattern: hostname-like characters
+_SCOPE_ID_RE = re.compile(r"^[a-z0-9\-_.]{1,128}$")
 
 
 class DeploymentCreate(BaseModel):
@@ -26,11 +32,27 @@ class DeploymentCreate(BaseModel):
             raise ValueError(f"artifact_type must be one of {_VALID_ARTIFACT_TYPES}")
         return v
 
+    @field_validator("artifact_ref")
+    @classmethod
+    def validate_artifact_ref(cls, v: str) -> str:
+        if not _ARTIFACT_REF_RE.match(v):
+            raise ValueError("artifact_ref contains unsafe characters")
+        return v
+
     @field_validator("rollout_mode")
     @classmethod
     def validate_rollout_mode(cls, v: str) -> str:
         if v not in _VALID_ROLLOUT_MODES:
             raise ValueError(f"rollout_mode must be one of {_VALID_ROLLOUT_MODES}")
+        return v
+
+    @field_validator("target_scope")
+    @classmethod
+    def validate_target_scope(cls, v: dict) -> dict:
+        for key in ("deviceId", "zoneId", "siteId"):
+            val = v.get(key)
+            if val is not None and not _SCOPE_ID_RE.match(val):
+                raise ValueError(f"target_scope.{key} contains unsafe characters")
         return v
 
 
@@ -68,6 +90,29 @@ class HotfixCreate(BaseModel):
     change_id: str | None = None
     expires_at: datetime | None = None
     recon_policy: str = "decide-later"
+
+    @field_validator("hotfix_id")
+    @classmethod
+    def validate_hotfix_id(cls, v: str) -> str:
+        if not re.fullmatch(r"[A-Z0-9\-]{1,64}", v):
+            raise ValueError("hotfix_id must be uppercase alphanumeric and hyphens only, max 64 chars")
+        return v
+
+    @field_validator("artifact_ref")
+    @classmethod
+    def validate_artifact_ref(cls, v: str) -> str:
+        if not _ARTIFACT_REF_RE.match(v):
+            raise ValueError("artifact_ref contains unsafe characters")
+        return v
+
+    @field_validator("target_scope")
+    @classmethod
+    def validate_target_scope(cls, v: dict) -> dict:
+        for key in ("deviceId", "zoneId", "siteId"):
+            val = v.get(key)
+            if val is not None and not _SCOPE_ID_RE.match(val):
+                raise ValueError(f"target_scope.{key} contains unsafe characters")
+        return v
 
     @field_validator("artifact_type")
     @classmethod

@@ -1,18 +1,22 @@
 from contextlib import asynccontextmanager
+import logging
+import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
+from sqlalchemy import func, select
 
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
-from app.db import Base, engine
-from app.services.token import TokenPayload, decode_token
+from app.db import AsyncSessionLocal, Base, engine
+from app.services.passwords import hash_password
+
+_log = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────
 # Lifespan: create tables on fresh dev start (Alembic handles prod)
+# and seed first admin from env vars when users table is empty.
 # ──────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -21,8 +25,38 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             import app.models  # noqa: F401 — populate Base.metadata
             await conn.run_sync(Base.metadata.create_all)
+
+    await _seed_admin()
     yield
     await engine.dispose()
+
+
+async def _seed_admin() -> None:
+    """Create the bootstrap admin account when the users table is empty.
+
+    Reads OPERATOR_USERNAME + OPERATOR_PASSWORD from settings.
+    Does nothing if any user already exists.
+    """
+    from app.models.user import User
+
+    async with AsyncSessionLocal() as db:
+        try:
+            count = await db.scalar(select(func.count()).select_from(User))
+            if count and count > 0:
+                return
+
+            admin = User(
+                user_id=str(uuid.uuid4()),
+                username=settings.OPERATOR_USERNAME,
+                password_hash=hash_password(settings.OPERATOR_PASSWORD),
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin)
+            await db.commit()
+            _log.info("Seeded bootstrap admin user: %s", settings.OPERATOR_USERNAME)
+        except Exception:  # noqa: BLE001 — table may not exist on very first cold start
+            await db.rollback()
 
 
 # ──────────────────────────────────────────────────────────
@@ -48,32 +82,29 @@ app.add_middleware(
 Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
 # ──────────────────────────────────────────────────────────
-# Auth dependency (also exported from app.dependencies — kept here for import convenience)
-# ──────────────────────────────────────────────────────────
-
-_bearer = HTTPBearer(auto_error=True)
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Security(_bearer),
-) -> TokenPayload:
-    try:
-        return decode_token(credentials.credentials)
-    except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
-
-# ──────────────────────────────────────────────────────────
 # Health
 # ──────────────────────────────────────────────────────────
 
 @app.get("/healthz", tags=["meta"])
 async def healthz():
     return {"status": "ok", "env": settings.FLEET_ENV}
+
+
+@app.get("/.well-known/openid-configuration", include_in_schema=False)
+async def oidc_discovery():
+    """Minimal OIDC discovery stub — enables tools like Vault and Dex to consume
+    the Fleet API as a JWT issuer without a full OIDC provider."""
+    base = settings.FLEET_API_URL.rstrip("/")
+    return {
+        "issuer": base,
+        "authorization_endpoint": f"{base}/oauth/authorize",
+        "token_endpoint": f"{base}/api/v1/auth/login",
+        "jwks_uri": f"{base}/.well-known/jwks.json",
+        "response_types_supported": ["token"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": [settings.FLEET_JWT_ALGORITHM],
+        "scopes_supported": ["openid"],
+    }
 
 
 # ──────────────────────────────────────────────────────────

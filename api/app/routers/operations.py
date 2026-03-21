@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+import re
+
+from pydantic import BaseModel, field_validator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,11 @@ from app.services.token import TokenPayload
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 
+# Permit only safe device ID characters to prevent Ansible inventory injection
+_DEVICE_ID_RE = re.compile(r"^[a-z0-9\-_.]{1,128}$")
+# Permit only safe systemd unit name characters (including @ for template units)
+_UNIT_NAME_RE = re.compile(r"^[a-zA-Z0-9\-_.@:\\]{1,256}$")
+
 
 class RestartServiceRequest(BaseModel):
     device_id: str
@@ -19,16 +26,54 @@ class RestartServiceRequest(BaseModel):
     change_id: str | None = None
     requested_by: str
 
+    @field_validator("device_id")
+    @classmethod
+    def check_device_id(cls, v: str) -> str:
+        if not _DEVICE_ID_RE.match(v):
+            raise ValueError("device_id contains invalid characters (a-z, 0-9, hyphen, underscore, dot only)")
+        return v
+
+    @field_validator("unit_name")
+    @classmethod
+    def check_unit_name(cls, v: str) -> str:
+        if not _UNIT_NAME_RE.match(v):
+            raise ValueError("unit_name contains invalid characters")
+        return v
+
 
 class RunDiagnosticsRequest(BaseModel):
     device_id: str
     requested_by: str
 
+    @field_validator("device_id")
+    @classmethod
+    def check_device_id(cls, v: str) -> str:
+        if not _DEVICE_ID_RE.match(v):
+            raise ValueError("device_id contains invalid characters (a-z, 0-9, hyphen, underscore, dot only)")
+        return v
+
+
+_SINCE_RE = re.compile(r"^\d{1,6}[smhd]$")  # e.g. "2h", "30m", "7d"
+
 
 class CollectLogsRequest(BaseModel):
     device_id: str
-    since: str | None = "2h"  # e.g. "2h", "30m", "1d"
+    since: str | None = "2h"
     requested_by: str
+
+    @field_validator("device_id")
+    @classmethod
+    def check_device_id(cls, v: str) -> str:
+        if not _DEVICE_ID_RE.match(v):
+            raise ValueError("device_id contains invalid characters (a-z, 0-9, hyphen, underscore, dot only)")
+        return v
+
+    @field_validator("since")
+    @classmethod
+    def check_since(cls, v: str | None) -> str | None:
+        if v is not None and not _SINCE_RE.match(v):
+            raise ValueError("since must be a positive integer followed by s/m/h/d (e.g. 2h, 30m)")
+        return v
 
 
 @router.post("/restart-service")
