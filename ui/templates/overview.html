@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Fleet Overview — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}Fleet Overview{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-create-site').showModal()">+ New Site</button>
+  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">⚡ Hotfix</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">FLEET OVERVIEW</h1>
+  <span class="page-refresh">Refreshed: <span id="refresh-time">—</span></span>
+</div>
+
+<!-- Platform summary stats -->
+<section class="card-section">
+  <h2 class="section-title">PLATFORM SUMMARY</h2>
+  <div class="stat-grid">
+
+    <div class="stat-card stat-neutral">
+      <div class="stat-value">{{ stats.sites }}</div>
+      <div class="stat-label">Sites</div>
+    </div>
+
+    <div class="stat-card stat-neutral">
+      <div class="stat-value">{{ stats.zones }}</div>
+      <div class="stat-label">Zones</div>
+    </div>
+
+    <div class="stat-card
+      {%- if stats.devices == 0 %} stat-neutral
+      {%- elif stats.devices_online == stats.devices %} stat-ok
+      {%- elif stats.devices_online > 0 %} stat-warn
+      {%- else %} stat-critical{%- endif %}">
+      <div class="stat-value">
+        {{ stats.devices_online }}<span class="stat-total">/{{ stats.devices }}</span>
+      </div>
+      <div class="stat-label">Devices Online</div>
+    </div>
+
+    <div class="stat-card
+      {%- if stats.alerts_critical > 0 %} stat-critical
+      {%- elif stats.alerts_warning > 0 %} stat-warn
+      {%- else %} stat-ok{%- endif %}">
+      <div class="stat-value">{{ stats.alerts_critical + stats.alerts_warning }}</div>
+      <div class="stat-label">Open Alerts</div>
+      {%- if stats.alerts_critical > 0 %}
+        <div class="stat-sub">{{ stats.alerts_critical }} critical</div>
+      {%- endif %}
+    </div>
+
+    <div class="stat-card {% if stats.active_deployments > 0 %}stat-warn{% else %}stat-neutral{% endif %}">
+      <div class="stat-value">{{ stats.active_deployments }}</div>
+      <div class="stat-label">Active Rollouts</div>
+    </div>
+
+    <div class="stat-card stat-neutral">
+      <div class="stat-value">{{ stats.profiles }}</div>
+      <div class="stat-label">Profiles</div>
+    </div>
+
+    <div class="stat-card {% if stats.active_overrides > 0 %}stat-warn{% else %}stat-neutral{% endif %}">
+      <div class="stat-value">{{ stats.active_overrides }}</div>
+      <div class="stat-label">Overrides</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Site status cards -->
+<section class="card-section">
+  <h2 class="section-title">SITE STATUS</h2>
+  {% if sites %}
+    <div class="site-grid">
+      {% for site in sites %}
+        <a href="{{ url_for('inventory.site_view', site_id=site.site_id) }}" class="site-card
+          {%- if site.status == 'critical' %} status-critical
+          {%- elif site.status == 'warning' %} status-warning
+          {%- else %} status-ok
+          {%- endif %}">
+          <div class="site-card-status">
+            {%- if site.status == 'critical' %}🔴
+            {%- elif site.status == 'warning' %}🟡
+            {%- else %}✅{% endif %}
+          </div>
+          <div class="site-card-name">{{ site.name | upper }}</div>
+          <div class="site-card-detail">
+            {{ site.zone_count | default('?') }} zones
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+    <p class="hint">Click any site card to open Site View</p>
+  {% else %}
+    <p class="empty-state">No sites found.</p>
+  {% endif %}
+</section>
+
+<!-- Open alerts -->
+<section class="card-section">
+  <h2 class="section-title">OPEN ALERTS</h2>
+  {% if alerts %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Device</th>
+          <th>Summary</th>
+          <th>Since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alert in alerts %}
+          <tr class="alert-row severity-{{ alert.labels.severity | default('info') }}">
+            <td>
+              {%- if alert.labels.severity == 'critical' %}🔴 P1
+              {%- elif alert.labels.severity == 'warning' %}🟡 P2
+              {%- else %}ℹ️ INFO{% endif %}
+            </td>
+            <td>{{ alert.labels.device_id | default('—') }}</td>
+            <td>{{ alert.annotations.summary | default(alert.labels.alertname) }}</td>
+            <td>{{ alert.startsAt | default('') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state status-ok-text">✅ No open alerts</p>
+  {% endif %}
+</section>
+
+<!-- Active rollouts -->
+<section class="card-section">
+  <h2 class="section-title">ACTIVE ROLLOUT</h2>
+  {% if active_deployments %}
+    {% for dep in active_deployments %}
+      <div class="rollout-banner">
+        <span class="rollout-name">{{ dep.component }} {{ dep.version }}</span>
+        <span class="rollout-ring">Ring {{ dep.target_ring }}</span>
+        <span class="rollout-status">🔄 {{ dep.status }}</span>
+        <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-ghost btn-sm">
+          View in Deployment Center →
+        </a>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No active rollouts.</p>
+  {% endif %}
+</section>
+
+<!-- Create Site modal -->
+<dialog id="modal-create-site">
+  <div class="dialog-header">
+    <span>CREATE SITE</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('inventory.create_site_post') }}">
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Site ID *</label>
+          <input name="site_id" class="form-control" placeholder="paris" required pattern="[a-z0-9\-]+" />
+          <span class="form-hint">Lowercase, hyphens only</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Display Name *</label>
+          <input name="name" class="form-control" placeholder="Paris Nord" required />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Timezone</label>
+        <input name="timezone" class="form-control" placeholder="Europe/Paris" value="UTC" />
+        <span class="form-hint">IANA timezone, e.g. Europe/Paris</span>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Create Site</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+</script>
+{% endblock %}

@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Platform Monitoring — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}Platform Monitoring{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">PLATFORM MONITORING</h1>
+  <span class="page-refresh">Refreshed: <span id="refresh-time">—</span></span>
+</div>
+
+<!-- Host Vitals -->
+<section class="card-section">
+  <h2 class="section-title">HOST VITALS</h2>
+  <div class="stat-grid" style="grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));">
+
+    <!-- CPU -->
+    <div class="stat-card
+      {%- if host.cpu_pct is none %} stat-neutral
+      {%- elif host.cpu_pct > 85 %} stat-critical
+      {%- elif host.cpu_pct > 65 %} stat-warn
+      {%- else %} stat-ok{%- endif %}">
+      <div class="stat-value">
+        {{ host.cpu_pct if host.cpu_pct is not none else '—' }}<span class="stat-total">{% if host.cpu_pct is not none %}%{% endif %}</span>
+      </div>
+      <div class="stat-label">CPU Usage</div>
+      {% if host.cpu_pct is not none %}
+        <div class="gauge-bar">
+          <div class="gauge-fill {% if host.cpu_pct > 85 %}critical{% elif host.cpu_pct > 65 %}warn{% else %}ok{% endif %}"
+               style="width: {{ [host.cpu_pct, 100] | min }}%"></div>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Memory -->
+    <div class="stat-card
+      {%- if host.mem_pct is none %} stat-neutral
+      {%- elif host.mem_pct > 90 %} stat-critical
+      {%- elif host.mem_pct > 75 %} stat-warn
+      {%- else %} stat-ok{%- endif %}">
+      <div class="stat-value">
+        {{ host.mem_pct if host.mem_pct is not none else '—' }}<span class="stat-total">{% if host.mem_pct is not none %}%{% endif %}</span>
+      </div>
+      <div class="stat-label">Memory</div>
+      {% if host.mem_pct is not none %}
+        <div class="gauge-bar">
+          <div class="gauge-fill {% if host.mem_pct > 90 %}critical{% elif host.mem_pct > 75 %}warn{% else %}ok{% endif %}"
+               style="width: {{ [host.mem_pct, 100] | min }}%"></div>
+        </div>
+        <div class="stat-sub2">{{ host.mem_used }} / {{ host.mem_total }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Disk -->
+    <div class="stat-card
+      {%- if host.disk_pct is none %} stat-neutral
+      {%- elif host.disk_pct > 90 %} stat-critical
+      {%- elif host.disk_pct > 75 %} stat-warn
+      {%- else %} stat-ok{%- endif %}">
+      <div class="stat-value">
+        {{ host.disk_pct if host.disk_pct is not none else '—' }}<span class="stat-total">{% if host.disk_pct is not none %}%{% endif %}</span>
+      </div>
+      <div class="stat-label">Disk (/) Used</div>
+      {% if host.disk_pct is not none %}
+        <div class="gauge-bar">
+          <div class="gauge-fill {% if host.disk_pct > 90 %}critical{% elif host.disk_pct > 75 %}warn{% else %}ok{% endif %}"
+               style="width: {{ [host.disk_pct, 100] | min }}%"></div>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Load Average -->
+    <div class="stat-card stat-neutral">
+      <div class="stat-value" style="font-size: 22px;">
+        {{ host.load1 if host.load1 is not none else '—' }}
+      </div>
+      <div class="stat-label">Load Avg (1m)</div>
+      {% if host.load5 is not none %}
+        <div class="stat-sub2">5m: {{ host.load5 }} &nbsp;·&nbsp; 15m: {{ host.load15 }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Net RX -->
+    <div class="stat-card stat-neutral">
+      <div class="stat-value" style="font-size: 18px;">{{ host.net_rx }}</div>
+      <div class="stat-label">Net RX / s</div>
+    </div>
+
+    <!-- Net TX -->
+    <div class="stat-card stat-neutral">
+      <div class="stat-value" style="font-size: 18px;">{{ host.net_tx }}</div>
+      <div class="stat-label">Net TX / s</div>
+    </div>
+
+    <!-- Temperature (optional) -->
+    {% if host.temp_c is not none %}
+    <div class="stat-card
+      {%- if host.temp_c > 80 %} stat-critical
+      {%- elif host.temp_c > 65 %} stat-warn
+      {%- else %} stat-ok{%- endif %}">
+      <div class="stat-value">{{ host.temp_c }}<span class="stat-total"> °C</span></div>
+      <div class="stat-label">Temperature</div>
+    </div>
+    {% endif %}
+
+    <!-- Uptime -->
+    <div class="stat-card stat-neutral">
+      <div class="stat-value" style="font-size: 16px; line-height: 1.4;">{{ host.uptime }}</div>
+      <div class="stat-label">Uptime</div>
+    </div>
+
+  </div>
+  {% if host.cpu_pct is none %}
+    <p class="hint" style="margin-top: 12px;">⚠ node_exporter not reachable — deploy it on the VPS host (port 9100) for live metrics.</p>
+  {% endif %}
+</section>
+
+<!-- Platform Services -->
+<section class="card-section">
+  <h2 class="section-title">PLATFORM SERVICES</h2>
+  {% if targets %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Endpoint</th>
+          <th>Status</th>
+          <th>Last Scrape</th>
+          <th>Duration</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in targets %}
+          <tr>
+            <td><strong>{{ t.labels.job | default(t.scrapePool) }}</strong></td>
+            <td><code>{{ t.scrapeUrl }}</code></td>
+            <td>
+              <span class="health-badge health-{{ t.health }}">
+                {%- if t.health == 'up' %}✅ UP
+                {%- elif t.health == 'down' %}🔴 DOWN
+                {%- else %}⚠ UNKNOWN{% endif %}
+              </span>
+            </td>
+            <td class="text-muted">
+              {{ t.lastScrape | replace('T', ' ') | truncate(19, True, '') if t.lastScrape else '—' }}
+            </td>
+            <td class="text-muted">
+              {% if t.lastScrapeDuration %}{{ "%.0f ms" % (t.lastScrapeDuration * 1000) }}{% else %}—{% endif %}
+            </td>
+            <td class="text-muted">{{ t.lastError if t.lastError else '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">Cannot reach Prometheus — service health unavailable.</p>
+  {% endif %}
+</section>
+
+<!-- Active Alerts -->
+<section class="card-section">
+  <h2 class="section-title">ACTIVE ALERTS</h2>
+  {% if alerts %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Alert</th>
+          <th>Instance / Site</th>
+          <th>Summary</th>
+          <th>Since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in alerts %}
+          <tr class="alert-row severity-{{ a.labels.severity | default('info') }}">
+            <td>
+              {%- if a.labels.severity == 'critical' %}🔴 P1
+              {%- elif a.labels.severity == 'warning' %}🟡 P2
+              {%- else %}ℹ️ INFO{% endif %}
+            </td>
+            <td>{{ a.labels.alertname | default('—') }}</td>
+            <td class="text-muted">{{ a.labels.instance | default(a.labels.get('site', '—')) }}</td>
+            <td>{{ a.annotations.summary | default('—') }}</td>
+            <td class="text-muted">
+              {{ a.startsAt | replace('T', ' ') | truncate(19, True, '') if a.startsAt else '—' }}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state status-ok-text">✅ No active alerts</p>
+  {% endif %}
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+  // Auto-refresh every 30 seconds
+  setTimeout(() => window.location.reload(), 30000);
+</script>
+{% endblock %}

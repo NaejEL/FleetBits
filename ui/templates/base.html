@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Fleet Manager{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet.css') }}">
+</head>
+<body>
+
+<!-- ── Sidebar nav ─────────────────────────────────────────────── -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">⬡</span>
+    <span class="brand-name">Fleet Manager</span>
+  </div>
+
+  <ul class="nav-list">
+    <div class="nav-section">Fleet</div>
+    <li class="nav-item {% if request.endpoint == 'inventory.overview' %}active{% endif %}">
+      <a href="{{ url_for('inventory.overview') }}">Overview</a>
+    </li>
+    <li class="nav-item {% if request.endpoint and request.endpoint.startswith('deployments') %}active{% endif %}">
+      <a href="{{ url_for('deployments.deployment_center') }}">Deployments</a>
+    </li>
+    <li class="nav-item {% if request.endpoint and request.endpoint.startswith('hotfixes') %}active{% endif %}">
+      <a href="{{ url_for('hotfixes.hotfix_console') }}">Hotfixes</a>
+    </li>
+
+    <div class="nav-section">Ops</div>
+    <li class="nav-item {% if request.endpoint == 'monitoring.platform_monitoring' %}active{% endif %}">
+      <a href="{{ url_for('monitoring.platform_monitoring') }}">📡 Monitoring</a>
+    </li>
+    <li class="nav-item {% if request.endpoint == 'packages.packages_browser' %}active{% endif %}">
+      <a href="{{ url_for('packages.packages_browser') }}">📦 Packages</a>
+    </li>
+    <li class="nav-item {% if request.endpoint == 'admin.profiles_list' %}active{% endif %}">
+      <a href="{{ url_for('admin.profiles_list') }}">🔧 Profiles</a>
+    </li>
+    <li class="nav-item {% if request.endpoint == 'admin.overrides_list' %}active{% endif %}">
+      <a href="{{ url_for('admin.overrides_list') }}">⚡ Overrides</a>
+    </li>
+
+    <div class="nav-section">Admin</div>
+    <li class="nav-item {% if request.endpoint and request.endpoint.startswith('audit') %}active{% endif %}">
+      <a href="{{ url_for('audit.audit_log') }}">Audit Log</a>
+    </li>
+  </ul>
+
+  <div class="nav-footer">
+    <a href="{{ semaphore_url }}" target="_blank" rel="noopener" class="ext-link"
+       title="Requires WireGuard / Headscale connection">⚙ Semaphore ↗</a>
+  </div>
+</nav>
+
+<!-- ── Top bar ─────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="topbar-breadcrumb">{% block breadcrumb %}{% endblock %}</div>
+  <div class="topbar-right">
+    {% block topbar_actions %}{% endblock %}
+    <a href="{{ grafana_url }}/d/fleet-overview/fleet-overview" target="_blank"
+       rel="noopener" class="btn btn-ghost btn-sm">📊 Grafana ↗</a>
+    <span class="topbar-user">👤 {{ current_user or '—' }}</span>
+    <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline">
+      <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+    </form>
+  </div>
+</div>
+
+<!-- ── Flash messages ──────────────────────────────────────────── -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="flash-container">
+      {% for category, msg in messages %}
+        <div class="flash flash-{{ category }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- ── Main content ────────────────────────────────────────────── -->
+<main class="content">
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

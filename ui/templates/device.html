@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}{{ device.device_id }} — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  {% if site %}
+    › <a href="{{ url_for('inventory.site_view', site_id=site.site_id) }}">{{ site.name }}</a>
+  {% endif %}
+  {% if zone %}
+    › <a href="{{ url_for('inventory.zone_view', zone_id=zone.zone_id) }}">{{ zone.name }}</a>
+  {% endif %}
+  › <strong>{{ device.device_id }}</strong>
+{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">⚡ Hotfix</a>
+{% endblock %}
+
+{% block content %}
+<!-- Device identity header -->
+<div class="device-header card-section">
+  <h1 class="page-title">{{ device.device_id }}</h1>
+  <div class="device-meta-row">
+    <span class="badge">role: {{ device.role | default('—') }}</span>
+    <span>fleet-agent {{ device.agent_version | default('—') }}</span>
+    <span>OS: {{ device.os | default('—') }}</span>
+    <span>uptime: {{ device.uptime | default('—') }}</span>
+    <span>Headscale IP: {{ device.headscale_ip | default('—') }}</span>
+    <span class="status-badge status-{{ 'ok' if device.last_seen_seconds_ago is defined and device.last_seen_seconds_ago < 60 else 'warning' }}">
+      last seen: {{ device.last_seen | default('—') }}
+    </span>
+  </div>
+</div>
+
+<div class="device-layout">
+  <!-- Left: Metrics -->
+  <div class="device-metrics card-section">
+    <h2 class="section-title">
+      METRICS
+      <a href="{{ grafana_url }}/d/fleet-device/device-view?var-device_id={{ device.device_id }}"
+         target="_blank" rel="noopener" class="btn btn-ghost btn-xs float-right">Open full Grafana →</a>
+    </h2>
+
+    <div class="grafana-panels grafana-panels--stacked">
+      <div class="grafana-panel">
+        <iframe
+          src="{{ grafana_url }}/d-solo/fleet-device/device-view?panelId=1&orgId=1&theme=dark&from=now-1h&to=now&kiosk&var-device_id={{ device.device_id }}"
+          frameborder="0" allowfullscreen></iframe>
+      </div>
+    </div>
+
+    <!-- Simple metric display (from API data if available) -->
+    {% if device.metrics %}
+      <table class="metric-table">
+        <tbody>
+          <tr><td>CPU</td>
+            <td><div class="bar"><div class="bar-fill" style="width:{{ device.metrics.cpu_pct | default(0) }}%"></div></div></td>
+            <td>{{ device.metrics.cpu_pct | default('—') }}%</td></tr>
+          <tr><td>RAM</td>
+            <td><div class="bar"><div class="bar-fill" style="width:{{ device.metrics.ram_pct | default(0) }}%"></div></div></td>
+            <td>{{ device.metrics.ram_pct | default('—') }}%</td></tr>
+          <tr><td>Disk</td>
+            <td><div class="bar"><div class="bar-fill" style="width:{{ device.metrics.disk_pct | default(0) }}%"></div></div></td>
+            <td>{{ device.metrics.disk_pct | default('—') }}%</td></tr>
+          <tr><td>Temp</td><td colspan="2">{{ device.metrics.temp_c | default('—') }}°C</td></tr>
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+
+  <!-- Right: Services + actions -->
+  <div class="device-services card-section">
+    <h2 class="section-title">SERVICES</h2>
+    {% if services %}
+      <ul class="svc-list svc-list--detail">
+        {% for svc in services %}
+          <li class="svc-item svc-{{ svc.state | default('unknown') }}">
+            <div class="svc-row">
+              {%- if svc.state == 'active' %}●{%- elif svc.state == 'activating' %}⚠{%- else %}🔴{% endif %}
+              <strong class="svc-name">{{ svc.service_name }}</strong>
+              <span class="svc-version">{{ svc.version | default('') }}</span>
+            </div>
+            <div class="svc-actions">
+              <form method="post"
+                    action="{{ url_for('inventory.restart_service', device_id=device.device_id) }}"
+                    style="display:inline">
+                <input type="hidden" name="service_name" value="{{ svc.service_name }}">
+                <button type="submit" class="btn btn-ghost btn-xs"
+                        onclick="return confirm('Restart {{ svc.service_name }}?')">↺ Restart</button>
+              </form>
+              <a href="{{ grafana_url }}/explore?orgId=1&left={{'{\"datasource\":\"loki\",\"queries\":[{\"expr\":\"{device_id=\\\"' ~ device.device_id ~ '\\\",service=\\\"' ~ svc.service_name ~ '\\\"}\"}}' | urlencode }}"
+                 target="_blank" rel="noopener" class="btn btn-ghost btn-xs">📋 Logs</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty-state">No service data</p>
+    {% endif %}
+
+    <!-- Diagnostics -->
+    <div class="svc-footer">
+      <form method="post" action="{{ url_for('inventory.run_diagnostics', device_id=device.device_id) }}">
+        <button type="submit" class="btn btn-secondary btn-sm">🔍 Run Diagnostics</button>
+      </form>
+    </div>
+
+    <!-- Effective manifest -->
+    {% if manifest %}
+      <h2 class="section-title mt">EFFECTIVE MANIFEST</h2>
+      <table class="data-table data-table--compact">
+        <thead><tr><th>Service</th><th>Type</th><th>Version / Ref</th></tr></thead>
+        <tbody>
+          {% for entry in manifest.entries | default([]) %}
+            <tr>
+              <td>{{ entry.service_name }}</td>
+              <td>{{ entry.artifact_type }}</td>
+              <td><code>{{ entry.version | default(entry.ref) }}</code></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+</div><!-- /device-layout -->
+{% endblock %}

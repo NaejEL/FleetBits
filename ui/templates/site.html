@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}{{ site.name }} — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>{{ site.name }}</strong>
+{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-create-zone').showModal()">+ New Zone</button>
+  <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-primary btn-sm">⬆ Deploy to site</a>
+  <button class="btn btn-danger btn-sm"
+    onclick="if(confirm('Delete site {{ site.site_id }} and all its zones? This cannot be undone.')) this.closest('form').submit()"
+    form="form-delete-site">🗑 Delete Site</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">SITE: {{ site.name | upper }}</h1>
+  <div class="page-meta">
+    <span>Timezone: {{ site.timezone | default('UTC') }}</span>
+    &nbsp;·&nbsp;
+    <span>{{ zones | length }} zones</span>
+    &nbsp;·&nbsp;
+    <span class="status-badge status-{{ site.status | default('ok') }}">
+      {%- if site.status == 'critical' %}🔴 Critical
+      {%- elif site.status == 'warning' %}🟡 Warning
+      {%- else %}✅ Healthy{% endif %}
+    </span>
+  </div>
+</div>
+
+<!-- Zone health matrix -->
+<section class="card-section">
+  <h2 class="section-title">ZONE HEALTH MATRIX</h2>
+  {% if zones %}
+    <div class="zone-matrix">
+      {% for zone in zones %}
+        {% set devices = zone_devices.get(zone.zone_id, []) %}
+        <a href="{{ url_for('inventory.zone_view', zone_id=zone.zone_id) }}" class="zone-card
+          {%- if zone.status == 'critical' %} status-critical
+          {%- elif zone.status == 'warning' %} status-warning
+          {%- else %} status-ok{% endif %}">
+          <div class="zone-card-name">
+            {%- if zone.status == 'critical' %}🔴
+            {%- elif zone.status == 'warning' %}🟡
+            {%- else %}✅{% endif %}
+            {{ zone.name | upper }}
+          </div>
+          <div class="zone-card-devices">{{ devices | length }} device{{ 's' if devices | length != 1 }}</div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty-state">No zones found for this site.</p>
+  {% endif %}
+</section>
+
+<!-- Recent site events -->
+<section class="card-section">
+  <h2 class="section-title">RECENT SITE EVENTS</h2>
+  {% if events %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Actor</th>
+          <th>Action</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for evt in events %}
+          <tr>
+            <td class="time-cell">{{ evt.created_at | default('') }}</td>
+            <td>{{ evt.actor | default('—') }}</td>
+            <td><code>{{ evt.action | default('—') }}</code></td>
+            <td>{{ evt.detail | default('') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint"><a href="{{ url_for('audit.audit_log', site_id=site.site_id) }}">View full audit log for this site →</a></p>
+  {% else %}
+    <p class="empty-state">No recent events.</p>
+  {% endif %}
+</section>
+
+{# ── Hidden delete-site form ──────────────────────────────────── #}
+<form id="form-delete-site" method="post"
+      action="{{ url_for('inventory.delete_site_post', site_id=site.site_id) }}"
+      style="display:none"></form>
+
+<!-- Create Zone modal -->
+<dialog id="modal-create-zone">
+  <div class="dialog-header">
+    <span>CREATE ZONE IN {{ site.name | upper }}</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('inventory.create_zone_post') }}">
+    <input type="hidden" name="site_id" value="{{ site.site_id }}" />
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Zone ID *</label>
+          <input name="zone_id" class="form-control" placeholder="paris-a" required pattern="[a-z0-9\-]+" />
+          <span class="form-hint">Lowercase, hyphens only</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Display Name *</label>
+          <input name="name" class="form-control" placeholder="Zone A" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Criticality</label>
+          <select name="criticality" class="form-control">
+            <option value="standard">Standard</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Profile ID</label>
+          <input name="profile_id" class="form-control" placeholder="default" />
+          <span class="form-hint">Optional — leave blank for no profile</span>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Create Zone</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

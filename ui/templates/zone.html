@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}{{ zone.name }} — {{ site.name if site }} — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  {% if site %}
+    › <a href="{{ url_for('inventory.site_view', site_id=site.site_id) }}">{{ site.name }}</a>
+  {% endif %}
+  › <strong>{{ zone.name }}</strong>
+{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-register-device').showModal()">+ Register Device</button>
+  <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-primary btn-sm">⬆ Deploy</a>
+  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">⚡ Hotfix</a>
+  <button class="btn btn-danger btn-sm"
+    onclick="if(confirm('Delete zone {{ zone.zone_id }}? All devices in this zone will be unlinked.')) this.closest('form').submit()"
+    form="form-delete-zone">🗑 Delete Zone</button>
+{% endblock %}
+
+{% block content %}
+<!-- Zone summary + actions panel -->
+<div class="zone-layout">
+  <div class="zone-main">
+    <div class="page-header">
+      <h1 class="page-title">ZONE: {{ zone.name | upper }}</h1>
+      <div class="page-meta">
+        <span>Profile: {{ zone.profile_id | default('—') }}</span>
+        &nbsp;·&nbsp;
+        <span class="status-badge status-{{ zone.status | default('ok') }}">
+          {%- if zone.status == 'critical' %}🔴 Critical
+          {%- elif zone.status == 'warning' %}🟡 Warning
+          {%- else %}✅ Healthy{% endif %}
+        </span>
+      </div>
+    </div>
+
+    <!-- Grafana iframes -->
+    <section class="card-section">
+      <h2 class="section-title">
+        GRAFANA METRICS
+        <a href="{{ grafana_url }}/d/fleet-zone/zone-view?var-zone_id={{ zone.zone_id }}"
+           target="_blank" rel="noopener" class="btn btn-ghost btn-xs float-right">⊞ Full dashboard ↗</a>
+      </h2>
+      <div class="grafana-panels">
+        <div class="grafana-panel">
+          <div class="panel-label">Service status (last 3h)</div>
+          <iframe
+            src="{{ grafana_url }}/d-solo/fleet-zone/zone-view?panelId=4&orgId=1&theme=dark&from=now-3h&to=now&kiosk&var-zone_id={{ zone.zone_id }}"
+            frameborder="0" allowfullscreen></iframe>
+          <a href="{{ grafana_url }}/d/fleet-zone/zone-view?panelId=4&var-zone_id={{ zone.zone_id }}"
+             target="_blank" rel="noopener" class="panel-link">↗ Open panel</a>
+        </div>
+        <div class="grafana-panel">
+          <div class="panel-label">Device health</div>
+          <iframe
+            src="{{ grafana_url }}/d-solo/fleet-zone/zone-view?panelId=7&orgId=1&theme=dark&from=now-3h&to=now&kiosk&var-zone_id={{ zone.zone_id }}"
+            frameborder="0" allowfullscreen></iframe>
+          <a href="{{ grafana_url }}/d/fleet-zone/zone-view?panelId=7&var-zone_id={{ zone.zone_id }}"
+             target="_blank" rel="noopener" class="panel-link">↗ Open panel</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Device / service health table -->
+    <section class="card-section">
+      <h2 class="section-title">SERVICE HEALTH</h2>
+      {% if devices %}
+        {% for device in devices %}
+          {% set svcs = device_services.get(device.device_id, []) %}
+          <div class="device-block">
+            <div class="device-block-header">
+              <a href="{{ url_for('inventory.device_view', device_id=device.device_id) }}"
+                 class="device-name">{{ device.device_id }}</a>
+              <span class="device-role badge">{{ device.role | default('—') }}</span>
+            </div>
+            {% if svcs %}
+              <ul class="svc-list">
+                {% for svc in svcs %}
+                  <li class="svc-item svc-{{ svc.state | default('unknown') }}">
+                    {%- if svc.state == 'active' %}●
+                    {%- elif svc.state == 'activating' %}⚠
+                    {%- else %}🔴{% endif %}
+                    <span class="svc-name">{{ svc.service_name }}</span>
+                    <span class="svc-version">{{ svc.version | default('') }}</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="svc-empty">No service data</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+        <p class="legend">● active &nbsp; ⚠ restarting &nbsp; 🔴 failed</p>
+      {% else %}
+        <p class="empty-state">No devices found in this zone.</p>
+      {% endif %}
+    </section>
+  </div><!-- /zone-main -->
+
+  <!-- Actions sidebar -->
+  <aside class="zone-actions">
+    <h2 class="section-title">ACTIONS</h2>
+    <form method="post" action="{{ url_for('deployments.deployment_center') }}">
+      <button type="submit" class="btn btn-secondary btn-full">⬆ Deploy version</button>
+    </form>
+    <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-full">⚡ Hotfix</a>
+
+    <h2 class="section-title mt">RECENT EVENTS</h2>
+    {% if events %}
+      <ul class="event-list">
+        {% for evt in events[:8] %}
+          <li class="event-item">
+            <span class="event-time">{{ evt.created_at | default('') }}</span>
+            <span class="event-action">{{ evt.action | default('') }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty-state">None</p>
+    {% endif %}
+
+    <h2 class="section-title mt">OPEN ALERTS</h2>
+    {% if alerts %}
+      <ul class="event-list">
+        {% for a in alerts %}
+          <li class="event-item alert-item">🔴 {{ a.annotations.summary | default(a.labels.alertname) }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty-state status-ok-text">✅ None</p>
+    {% endif %}
+  </aside>
+</div><!-- /zone-layout -->
+
+{# ── Hidden delete-zone form ──────────────────────────────────── #}
+<form id="form-delete-zone" method="post"
+      action="{{ url_for('inventory.delete_zone_post', zone_id=zone.zone_id) }}"
+      style="display:none">
+  <input type="hidden" name="site_id" value="{{ zone.site_id | default('') }}" />
+</form>
+
+<!-- Register Device modal -->
+<dialog id="modal-register-device">
+  <div class="dialog-header">
+    <span>REGISTER DEVICE IN {{ zone.name | upper }}</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('inventory.create_device_post') }}">
+    <input type="hidden" name="zone_id" value="{{ zone.zone_id }}" />
+    <input type="hidden" name="site_id" value="{{ zone.site_id | default('') }}" />
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Device ID *</label>
+          <input name="device_id" class="form-control" placeholder="paris-a-rpi-01" required />
+          <span class="form-hint">Unique fleet identifier</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hostname *</label>
+          <input name="hostname" class="form-control" placeholder="rpi-puzzle-01" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Role *</label>
+          <input name="role" class="form-control" placeholder="rpi-puzzle" required />
+          <span class="form-hint">e.g. rpi-puzzle, mini-orchestrator</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ring</label>
+          <select name="ring" class="form-control">
+            <option value="">— none —</option>
+            <option value="0">0 — Lab</option>
+            <option value="1">1 — Canary</option>
+            <option value="2">2 — Production</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Register Device</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

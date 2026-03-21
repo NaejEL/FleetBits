@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fleet Manager — Sign In</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet.css') }}">
+</head>
+<body class="login-page">
+
+<div class="login-box">
+  <div class="login-brand">
+    <span class="brand-icon">⬡</span>
+    <span class="brand-name">Fleet Manager</span>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="flash flash-{{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('auth.login_submit') }}" class="login-form">
+    <label for="username">Username</label>
+    <input id="username" type="text" name="username" autocomplete="username"
+           autofocus required placeholder="operator username">
+
+    <label for="password">Password</label>
+    <input id="password" type="password" name="password" autocomplete="current-password"
+           required placeholder="••••••••">
+
+    <button type="submit" class="btn btn-primary btn-full">Sign in</button>
+  </form>
+</div>
+
+</body>
+</html>

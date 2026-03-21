@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Version Overrides — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Overrides</strong>
+{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-warning btn-sm" onclick="document.getElementById('modal-create-override').showModal()">+ New Override</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">VERSION OVERRIDES</h1>
+  <p class="page-sub">Pin a specific component version to a site, zone, or device — bypassing the baseline profile.
+    Overrides are temporary. Set an expiry and reconcile after the standard baseline catches up.</p>
+</div>
+
+<section class="card-section">
+  {% if overrides %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Scope</th>
+          <th>Target</th>
+          <th>Component</th>
+          <th>Version</th>
+          <th>Type</th>
+          <th>Reason</th>
+          <th>Expires</th>
+          <th style="width:80px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ov in overrides %}
+          <tr class="{{ 'row-reconciled' if ov.reconciled }}">
+            <td><span class="scope-badge scope-{{ ov.scope }}">{{ ov.scope }}</span></td>
+            <td><code>{{ ov.target_id }}</code></td>
+            <td><code>{{ ov.component }}</code></td>
+            <td><code>{{ ov.artifact_ref }}</code></td>
+            <td>{{ ov.artifact_type }}</td>
+            <td>{{ ov.reason }}</td>
+            <td class="time-cell">{{ ov.expires_at | default('—') }}</td>
+            <td>
+              {% if not ov.reconciled %}
+                <form method="post" action="{{ url_for('admin.delete_override_post', override_id=ov.override_id) }}"
+                      onsubmit="return confirm('Remove override for {{ ov.component }}?')">
+                  <button type="submit" class="btn btn-danger btn-xs">Remove</button>
+                </form>
+              {% else %}
+                <span class="text-muted">reconciled</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No active overrides. All zones are running their profile baseline.</p>
+  {% endif %}
+</section>
+
+<!-- Create Override modal -->
+<dialog id="modal-create-override">
+  <div class="dialog-header">
+    <span>CREATE VERSION OVERRIDE</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('admin.create_override_post') }}">
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Scope *</label>
+          <select name="scope" class="form-control" required>
+            <option value="">— select —</option>
+            <option value="site">Site</option>
+            <option value="zone">Zone</option>
+            <option value="device">Device</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Target ID *</label>
+          <input name="target_id" class="form-control" placeholder="paris / paris-a / paris-a-rpi-01" required />
+          <span class="form-hint">Site, zone or device ID matching the scope</span>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Component *</label>
+          <input name="component" class="form-control" placeholder="fleet-puzzle-player" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Artifact Type *</label>
+          <select name="artifact_type" class="form-control">
+            <option value="deb">deb</option>
+            <option value="git">git</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Artifact Ref (version / git ref) *</label>
+        <input name="artifact_ref" class="form-control" placeholder="1.4.2-hotfix1 or abc1234" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reason *</label>
+        <input name="reason" class="form-control" placeholder="CHG-00441 — emergency backport for Paris display bug" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Expires at</label>
+        <input name="expires_at" type="datetime-local" class="form-control" />
+        <span class="form-hint">Optional — leave blank for permanent override</span>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-warning btn-sm">Create Override</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

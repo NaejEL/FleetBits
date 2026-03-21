@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Package Repository — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Packages</strong>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">APTLY PACKAGE REPOSITORY</h1>
+  <p class="page-sub">Browse .deb packages published in each environment channel.
+    Promote packages by uploading to <strong>dev</strong> first, then through staging to prod via the deployment pipeline.</p>
+</div>
+
+{% if repos %}
+  <!-- Env tabs -->
+  <div class="env-tabs">
+    {% for repo in repos %}
+      <button class="env-tab {{ 'active' if loop.first }}"
+              onclick="switchTab('{{ repo }}')" id="tab-{{ repo }}">
+        {{ repo | upper }}
+        <span class="pkg-badge {{ repo }}">{{ packages_by_repo.get(repo, []) | length }}</span>
+      </button>
+    {% endfor %}
+  </div>
+
+  {% for repo in repos %}
+    <div class="tab-pane {{ 'active' if loop.first }}" id="pane-{{ repo }}">
+      <section class="card-section">
+        {% set pkgs = packages_by_repo.get(repo, []) %}
+        {% if pkgs %}
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Package</th>
+                <th>Version</th>
+                <th>Architecture</th>
+                <th>Maintainer</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pkg in pkgs | sort(attribute='package') %}
+                <tr>
+                  <td><code>{{ pkg.package }}</code></td>
+                  <td><span class="pkg-badge {{ repo }}">{{ pkg.version }}</span></td>
+                  <td>{{ pkg.arch }}</td>
+                  <td class="text-muted">{{ pkg.maintainer }}</td>
+                  <td>{{ pkg.description }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="empty-state">No packages published to <strong>{{ repo }}</strong> yet.</p>
+        {% endif %}
+      </section>
+    </div>
+  {% endfor %}
+
+  <!-- Published endpoints summary -->
+  {% if publish_endpoints %}
+    <section class="card-section">
+      <h2 class="section-title">PUBLISHED ENDPOINTS</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Prefix / Storage</th>
+            <th>Distribution</th>
+            <th>Architectures</th>
+            <th>Sources</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ep in publish_endpoints %}
+            <tr>
+              <td><code>{{ ep.Prefix | default(ep.prefix | default('—')) }}</code></td>
+              <td>{{ ep.Distribution | default(ep.distribution | default('—')) }}</td>
+              <td>{{ (ep.Architectures | default(ep.architectures | default([]))) | join(', ') }}</td>
+              <td>
+                {% for src in ep.Sources | default(ep.sources | default([])) %}
+                  <code>{{ src.Name | default(src.name | default(src)) }}</code>
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+{% else %}
+  <section class="card-section">
+    <p class="empty-state">Could not reach the Aptly API — ensure <code>aptly-api</code> is running and
+      <code>APTLY_API_URL</code> is configured for the Fleet UI container.</p>
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function switchTab(repo) {
+  document.querySelectorAll('.env-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + repo).classList.add('active');
+  document.getElementById('pane-' + repo).classList.add('active');
+}
+</script>
+{% endblock %}

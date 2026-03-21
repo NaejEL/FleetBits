@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Hotfix Console — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}Hotfix Console{% endblock %}
+
+{% block topbar_actions %}
+  <a href="#create-hotfix" class="btn btn-warning btn-sm">+ Create Hotfix</a>
+{% endblock %}
+
+{% block content %}
+<!-- Active hotfixes -->
+<section class="card-section">
+  <h2 class="section-title">ACTIVE HOTFIXES</h2>
+  {% if active_hotfixes %}
+    {% for hf in active_hotfixes %}
+      <div class="hotfix-card">
+        <div class="hotfix-header">
+          <span class="hotfix-id">{{ hf.hotfix_id }}</span>
+          <span class="hotfix-device">{{ hf.device_id }}</span>
+          <span class="status-badge status-{{ 'ok' if hf.status == 'applied' else 'warning' }}">
+            {%- if hf.status == 'applied' %}✅ applied{%- else %}🔄 {{ hf.status }}{% endif %}
+          </span>
+        </div>
+        <div class="hotfix-detail">
+          <span>Service: <strong>{{ hf.service_name }}</strong></span>
+          &nbsp;→&nbsp;
+          <code>{{ hf.artifact_ref | default(hf.version) }}</code>
+          &nbsp;·&nbsp;
+          <span>Expires: {{ hf.expires_at | default('—') }}</span>
+        </div>
+        <div class="hotfix-meta">
+          <span>Reason: {{ hf.reason | default('—') }}</span>
+          &nbsp;·&nbsp;
+          <span>by: {{ hf.created_by | default('—') }}</span>
+        </div>
+        <div class="hotfix-actions">
+          <form method="post"
+                action="{{ url_for('hotfixes.promote', hotfix_id=hf.hotfix_id) }}"
+                style="display:inline">
+            <button type="submit" class="btn btn-primary btn-sm"
+                    onclick="return confirm('Promote hotfix {{ hf.hotfix_id }} to baseline?')">
+              Promote to baseline
+            </button>
+          </form>
+          <form method="post"
+                action="{{ url_for('hotfixes.revert', hotfix_id=hf.hotfix_id) }}"
+                style="display:inline">
+            <button type="submit" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Revert hotfix {{ hf.hotfix_id }}?')">
+              Revert to {{ hf.prev_version | default('previous version') }}
+            </button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state status-ok-text">✅ No active hotfixes.</p>
+  {% endif %}
+</section>
+
+<!-- Create hotfix form -->
+<section class="card-section" id="create-hotfix">
+  <h2 class="section-title">CREATE HOTFIX</h2>
+  <form method="post" action="{{ url_for('hotfixes.new_hotfix') }}" class="form-grid"
+        id="hotfix-form">
+    <div class="form-row">
+      <label>Target</label>
+      <div class="radio-group">
+        <label><input type="radio" name="target_type" value="device" checked
+                      onchange="toggleTarget(this)"> Device</label>
+        <label><input type="radio" name="target_type" value="zone"
+                      onchange="toggleTarget(this)"> Zone</label>
+        <label><input type="radio" name="target_type" value="site"
+                      onchange="toggleTarget(this)"> Site</label>
+      </div>
+    </div>
+
+    {% if sites %}
+      <div class="form-row">
+        <label for="hf-site">Site</label>
+        <select id="hf-site" name="site_id">
+          <option value="">— Select site —</option>
+          {% for site in sites %}
+            <option value="{{ site.site_id }}">{{ site.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    <div class="form-row">
+      <label for="hf-device">Device</label>
+      <input id="hf-device" type="text" name="device_id" placeholder="rpi-paris-zone1-02">
+    </div>
+
+    <div class="form-row">
+      <label for="hf-service">Service</label>
+      <input id="hf-service" type="text" name="service_name" placeholder="video-player" required>
+    </div>
+
+    <div class="form-row">
+      <label>Artifact</label>
+      <div class="radio-group">
+        <label><input type="radio" name="artifact_type" value="deb"> deb package</label>
+        <label><input type="radio" name="artifact_type" value="git" checked> git ref</label>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="hf-ref">Ref / Version</label>
+      <input id="hf-ref" type="text" name="artifact_ref" placeholder="hotfix/audio-sync-2" required>
+    </div>
+
+    <div class="form-row">
+      <label for="hf-change-id">Change ID</label>
+      <input id="hf-change-id" type="text" name="change_id" placeholder="CHG-2026-xxxx">
+    </div>
+
+    <div class="form-row">
+      <label for="hf-reason">Reason</label>
+      <input id="hf-reason" type="text" name="reason"
+             placeholder="P1 - zone blocked - audio sync crash" required>
+    </div>
+
+    <div class="form-row">
+      <label for="hf-expires">Expires at</label>
+      <input id="hf-expires" type="datetime-local" name="expires_at">
+    </div>
+
+    <div class="form-row">
+      <label>After fix</label>
+      <div class="radio-group radio-group--vertical">
+        <label>
+          <input type="radio" name="after_fix" value="promote" checked>
+          Promote to baseline
+        </label>
+        <label>
+          <input type="radio" name="after_fix" value="revert">
+          Revert to previous version
+        </label>
+        <label>
+          <input type="radio" name="after_fix" value="decide_later">
+          Decide later (review before expiry)
+        </label>
+      </div>
+    </div>
+
+    <div class="form-row form-row--submit">
+      <button type="submit" class="btn btn-warning">Execute ⚡</button>
+    </div>
+  </form>
+</section>
+
+<!-- SSH break-glass reconcile -->
+<section class="card-section">
+  <h2 class="section-title">SSH BREAK-GLASS RECONCILE</h2>
+  <p class="hint">If you intervened manually via SSH, record it here so the audit log reflects reality.</p>
+  <form method="post" action="{{ url_for('hotfixes.reconcile_ssh') }}" class="form-grid">
+    <div class="form-row">
+      <label for="recon-device">Device</label>
+      <input id="recon-device" type="text" name="device_id" placeholder="device-id" required>
+    </div>
+    <div class="form-row">
+      <label for="recon-hotfix">Hotfix ID (if applicable)</label>
+      <input id="recon-hotfix" type="text" name="hotfix_id" placeholder="HF-2026-xxxxx">
+    </div>
+    <div class="form-row">
+      <label for="recon-commands">Commands executed</label>
+      <textarea id="recon-commands" name="commands" rows="3"
+                placeholder="git checkout hotfix/xxx&#10;systemctl restart service"></textarea>
+    </div>
+    <div class="form-row">
+      <label for="recon-evidence">Evidence / notes</label>
+      <textarea id="recon-evidence" name="evidence" rows="2"
+                placeholder="journal.txt contents or paste relevant log lines"></textarea>
+    </div>
+    <div class="form-row form-row--submit">
+      <button type="submit" class="btn btn-secondary">Reconcile SSH action</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

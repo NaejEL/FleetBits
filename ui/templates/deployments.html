@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Deployment Center — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}Deployment Center{% endblock %}
+
+{% block topbar_actions %}
+  <a href="#new-deployment" class="btn btn-primary btn-sm">+ New Deployment</a>
+{% endblock %}
+
+{% block content %}
+<!-- Active rollouts -->
+<section class="card-section">
+  <h2 class="section-title">ACTIVE ROLLOUT</h2>
+  {% if active_deployments %}
+    {% for dep in active_deployments %}
+      <div class="rollout-card">
+        <div class="rollout-header">
+          <span class="rollout-title">{{ dep.component }} {{ dep.version }}</span>
+          {% if dep.change_id %}
+            <span class="badge">{{ dep.change_id }}</span>
+          {% endif %}
+          <span class="rollout-status badge-status-{{ dep.status }}">
+            {%- if dep.status == 'in_progress' %}🔄 live
+            {%- elif dep.status == 'pending' %}⏳ pending
+            {%- else %}{{ dep.status }}{% endif %}
+          </span>
+        </div>
+
+        <!-- Ring progress bars -->
+        <div class="ring-bars">
+          {% set rings = [
+            {'label': 'Ring 0  Lab', 'ring': 0},
+            {'label': 'Ring 1  Canary', 'ring': 1},
+            {'label': 'Ring 2  Prod', 'ring': 2},
+          ] %}
+          {% for r in rings %}
+            <div class="ring-row">
+              <span class="ring-label">{{ r.label }}</span>
+              <div class="ring-bar-wrap">
+                <div class="ring-bar-fill
+                  {%- if dep.target_ring > r.ring %} ring-done
+                  {%- elif dep.target_ring == r.ring %} ring-active
+                  {%- else %} ring-waiting{% endif %}"
+                  style="width:{% if dep.target_ring > r.ring %}100{% elif dep.target_ring == r.ring %}{{ dep.progress_pct | default(0) }}{% else %}0{% endif %}%"></div>
+              </div>
+              <span class="ring-pct">
+                {%- if dep.target_ring > r.ring %}100% ✅ done
+                {%- elif dep.target_ring == r.ring %}{{ dep.progress_pct | default(0) }}% 🔄 live
+                {%- else %}0% ⏳ wait{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="rollout-actions">
+          <form method="post" action="{{ url_for('deployments.trigger', deployment_id=dep.deployment_id) }}"
+                style="display:inline">
+            <button type="submit" class="btn btn-primary btn-sm"
+                    onclick="return confirm('Trigger deployment {{ dep.deployment_id }}?')">
+              Promote → Ring {{ (dep.target_ring | int) + 1 }}
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('deployments.rollback', deployment_id=dep.deployment_id) }}"
+                style="display:inline">
+            <button type="submit" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Roll back {{ dep.deployment_id }}?')">
+              ⬇ Rollback ring {{ dep.target_ring }}
+            </button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No active rollouts.</p>
+  {% endif %}
+</section>
+
+<!-- New deployment form -->
+<section class="card-section" id="new-deployment">
+  <h2 class="section-title">NEW DEPLOYMENT</h2>
+  <form method="post" action="{{ url_for('deployments.new_deployment') }}" class="form-grid">
+    <div class="form-row">
+      <label for="dep-component">Component</label>
+      <input id="dep-component" type="text" name="component" placeholder="e.g. zone-controller" required>
+    </div>
+    <div class="form-row">
+      <label>Artifact</label>
+      <div class="radio-group">
+        <label><input type="radio" name="artifact_type" value="deb" checked> deb</label>
+        <label><input type="radio" name="artifact_type" value="git"> git</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <label for="dep-version">Version</label>
+      <input id="dep-version" type="text" name="version" placeholder="e.g. 2.7.0" required>
+    </div>
+    <div class="form-row">
+      <label>Start at ring</label>
+      <div class="radio-group">
+        <label><input type="radio" name="target_ring" value="0" checked> Ring 0</label>
+        <label><input type="radio" name="target_ring" value="1"> Ring 1</label>
+        <label><input type="radio" name="target_ring" value="2"> Ring 2</label>
+      </div>
+    </div>
+    {% if sites %}
+      <div class="form-row">
+        <label for="dep-site">Site (optional)</label>
+        <select id="dep-site" name="site_id">
+          <option value="">— All sites —</option>
+          {% for site in sites %}
+            <option value="{{ site.site_id }}">{{ site.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+    <div class="form-row">
+      <label for="dep-change-id">Change ID</label>
+      <input id="dep-change-id" type="text" name="change_id" placeholder="CHG-2026-xxxx">
+    </div>
+    <div class="form-row form-row--submit">
+      <button type="submit" class="btn btn-primary">Start rollout</button>
+    </div>
+  </form>
+</section>
+
+<!-- Recent deployments -->
+<section class="card-section">
+  <h2 class="section-title">RECENT DEPLOYMENTS</h2>
+  {% if recent_deployments %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Component</th>
+          <th>Version</th>
+          <th>Change ID</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dep in recent_deployments %}
+          <tr>
+            <td>
+              {%- if dep.status == 'success' %}✅
+              {%- elif dep.status == 'failed' %}🔴
+              {%- elif dep.status == 'rolled_back' %}⬇️
+              {%- else %}•{% endif %}
+              {{ dep.status }}
+            </td>
+            <td>{{ dep.component }}</td>
+            <td>{{ dep.version }}</td>
+            <td>{{ dep.change_id | default('—') }}</td>
+            <td>{{ dep.created_at | default('') }}</td>
+            <td>
+              <form method="post" action="{{ url_for('deployments.rollback', deployment_id=dep.deployment_id) }}"
+                    style="display:inline">
+                <button type="submit" class="btn btn-ghost btn-xs"
+                        onclick="return confirm('Roll back?')">⬇ Rollback</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No past deployments.</p>
+  {% endif %}
+</section>
+{% endblock %}

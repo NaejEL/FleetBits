@@ -1,0 +1,36 @@
+# FleetBits-ui
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+.tox/
+*.egg-info/
+dist/
+build/
+
+# Environment secrets
+.env
+.env.local
+
+# Flask session / local state
+flask_session/
+instance/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.swo
+*~
+
+# Test artifacts
+.pytest_cache/
+*.log

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">AUDIT LOG</h1>
+  <span class="page-meta">{{ total }} total events</span>
+</div>
+
+<!-- Filters -->
+<section class="card-section">
+  <form method="get" action="{{ url_for('audit.audit_log') }}" class="filter-row">
+    <input type="text" name="actor" value="{{ filters.actor }}" placeholder="Actor (username)">
+    {% if sites %}
+      <select name="site_id">
+        <option value="">— All sites —</option>
+        {% for site in sites %}
+          <option value="{{ site.site_id }}"
+                  {% if filters.site_id == site.site_id %}selected{% endif %}>
+            {{ site.name }}
+          </option>
+        {% endfor %}
+      </select>
+    {% else %}
+      <input type="text" name="site_id" value="{{ filters.site_id }}" placeholder="Site ID">
+    {% endif %}
+    <input type="text" name="action" value="{{ filters.action }}"
+           placeholder="Action (deploy, restart-service…)">
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('audit.audit_log') }}" class="btn btn-ghost btn-sm">Clear</a>
+  </form>
+</section>
+
+<!-- Events table -->
+<section class="card-section">
+  {% if events %}
+    <table class="data-table audit-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Actor</th>
+          <th>Action</th>
+          <th>Target</th>
+          <th>Change ID</th>
+          <th>Status</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for evt in events %}
+          <tr class="audit-row">
+            <td class="time-cell">{{ evt.created_at | default('') }}</td>
+            <td>{{ evt.actor | default('—') }}</td>
+            <td><code>{{ evt.action | default('—') }}</code></td>
+            <td>
+              {% if evt.device_id %}
+                <a href="{{ url_for('inventory.device_view', device_id=evt.device_id) }}">
+                  {{ evt.device_id }}
+                </a>
+              {% elif evt.site_id %}
+                <a href="{{ url_for('inventory.site_view', site_id=evt.site_id) }}">
+                  {{ evt.site_id }}
+                </a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ evt.change_id | default('—') }}</td>
+            <td>
+              {%- if evt.status == 'success' %}✅
+              {%- elif evt.status == 'failed' %}🔴
+              {%- elif evt.status == 'pending' %}⏳
+              {%- else %}•{% endif %}
+              {{ evt.status | default('') }}
+            </td>
+            <td class="detail-cell">{{ evt.detail | default('') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      {% if has_prev %}
+        <a href="{{ url_for('audit.audit_log', page=page-1,
+                            actor=filters.actor, site_id=filters.site_id, action=filters.action) }}"
+           class="btn btn-ghost btn-sm">← Previous</a>
+      {% endif %}
+      <span class="page-indicator">Page {{ page }}</span>
+      {% if has_next %}
+        <a href="{{ url_for('audit.audit_log', page=page+1,
+                            actor=filters.actor, site_id=filters.site_id, action=filters.action) }}"
+           class="btn btn-ghost btn-sm">Next →</a>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="empty-state">No audit events match the current filters.</p>
+  {% endif %}
+</section>
+{% endblock %}
