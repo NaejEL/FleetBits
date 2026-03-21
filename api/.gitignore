@@ -1,0 +1,42 @@
+# FleetBits-api
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+.tox/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Alembic generated (version files are committed, local state is not)
+# Keep migrations/versions/ — it's committed
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.swo
+*~
+
+# Test artifacts
+.pytest_cache/
+*.log
