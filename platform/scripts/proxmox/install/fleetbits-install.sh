@@ -353,6 +353,16 @@ if [[ "${ENROLL_VPS,,}" == "y" ]]; then
     cd "${COMPOSE_DIR}"
     docker compose --profile agent --env-file ../secrets.env up -d --build vps-device
     success "vps-device started — VPS is now a managed fleet device."
+
+    # Patch fleetbits.service so vps-device also starts on every reboot
+    sed -i \
+        's|ExecStart=docker compose --env-file ../secrets.env up -d$|ExecStart=docker compose --profile agent --env-file ../secrets.env up -d|' \
+        /etc/systemd/system/fleetbits.service
+    sed -i \
+        's|ExecStop=docker compose --env-file ../secrets.env down$|ExecStop=docker compose --profile agent --env-file ../secrets.env down|' \
+        /etc/systemd/system/fleetbits.service
+    systemctl daemon-reload
+    success "fleetbits.service updated — vps-device will auto-start on reboot."
 else
     info "Skipped. To enable VPS self-monitoring later, run:"
     echo "  bash ${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh"

@@ -23,6 +23,12 @@ services:
       - caddy_config:/config
     # No environment changes needed — Caddy reads FLEET_DOMAIN from compose env
 
+  # Expose fleet-api on localhost so enroll-vps.sh (running on the CT host)
+  # can reach the API without going through Caddy.
+  fleet-api:
+    ports:
+      - "127.0.0.1:8000:8000"
+
   fleet-ui:
     environment:
       # upstream proxy adds HTTPS, so UI links to external services use https://
