@@ -51,7 +51,7 @@ RAM_MB="4096"
 SWAP_MB="512"
 BRIDGE="vmbr0"
 STORAGE="local-lvm"     # where to create the container rootfs
-UNPRIVILEGED="1"        # 1 = unprivileged (safer), 0 = privileged (needed for raw Docker)
+UNPRIVILEGED="0"        # 0 = privileged (required for Docker — runc needs CAP_NET_ADMIN in new netns)
 TEMPLATE_STORAGE="local"
 DEBIAN_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
 
@@ -83,8 +83,9 @@ while [[ -z "${FLEET_DOMAIN}" ]]; do
 done
 
 echo ""
-warn "Container will be created with Docker nesting enabled (features: nesting=1,keyctl=1)."
-warn "This requires the container to be UNPRIVILEGED — Docker runs inside a user namespace."
+warn "Container will be created as PRIVILEGED (required for Docker inside LXC)."
+warn "Root inside this CT maps to root on the host — only run trusted workloads inside it."
+warn "Alternative: use a full VM if you need stronger isolation."
 echo ""
 read -rp "Confirm creation of CT ${CTID} (${HOSTNAME}) on ${STORAGE}? [y/N]: " CONFIRM
 [[ "${CONFIRM,,}" == "y" ]] || { info "Aborted."; exit 0; }
@@ -119,17 +120,15 @@ pct create "${CTID}" "${TEMPLATE_STORAGE}:vztmpl/${DEBIAN_TEMPLATE}" \
 
 success "Container CT${CTID} created."
 
-# ── Apply sysctl settings required by Docker inside unprivileged LXC ──────────
-# Docker on recent kernels needs net.ipv4.ip_unprivileged_port_start to be set
-# at the LXC level; Docker itself cannot write it from inside the container.
-info "Configuring sysctl for Docker compatibility..."
-pct set "${CTID}" --features "nesting=1,keyctl=1" 2>/dev/null || true
-
-# Write lxc.sysctl directly into the LXC config file (pct set has no --lxc flag)
+# ── AppArmor: allow runc to write sysctls inside new network namespaces ─────────────
+# Proxmox's default LXC AppArmor profile blocks /proc/self/fd/N re-opens that
+# runc (≥1.1.8) uses when applying per-netns sysctls (e.g. ip_unprivileged_port_start).
+# Even a privileged LXC is affected. Unconfining AppArmor for this CT is the
+# standard fix used by TTeck scripts and the Proxmox community.
 LXC_CONF="/etc/pve/lxc/${CTID}.conf"
-if ! grep -q "lxc.sysctl.net.ipv4.ip_unprivileged_port_start" "${LXC_CONF}" 2>/dev/null; then
-    echo "lxc.sysctl.net.ipv4.ip_unprivileged_port_start = 0" >> "${LXC_CONF}"
-    success "sysctl net.ipv4.ip_unprivileged_port_start = 0 added to CT${CTID} config."
+if ! grep -q "lxc.apparmor.profile" "${LXC_CONF}"; then
+    echo "lxc.apparmor.profile: unconfined" >> "${LXC_CONF}"
+    success "AppArmor set to unconfined for CT${CTID} (required for Docker)."
 fi
 
 # ── Start the container ────────────────────────────────────────────────────────

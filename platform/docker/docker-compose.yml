@@ -142,12 +142,16 @@ services:
     environment:
       SECRET_KEY: "${FLEET_JWT_SECRET}"
       FLEET_API_URL: "http://fleet-api:8000"
+      APTLY_API_URL: "http://aptly-api:8080"
       GRAFANA_URL: "https://grafana.${FLEET_DOMAIN}"
       SEMAPHORE_URL: "https://semaphore.${FLEET_DOMAIN}"
       FLEET_DOMAIN: "${FLEET_DOMAIN}"
       FLEET_ENV: "${FLEET_ENV:-production}"
     depends_on:
-      - fleet-api
+      fleet-api:
+        condition: service_started
+      aptly-api:
+        condition: service_started
     restart: unless-stopped
     networks:
       - fleet_net
@@ -180,6 +184,12 @@ services:
     container_name: aptly-api
     volumes:
       - aptly_data:/root/.aptly
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/repos"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     restart: unless-stopped
     networks:
       - fleet_net

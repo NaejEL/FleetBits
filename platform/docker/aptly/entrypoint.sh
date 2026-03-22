@@ -3,6 +3,9 @@
 # Initialises aptly repos on first start, then launches the aptly API server.
 set -euo pipefail
 
+# Route all output (incl. stderr) to stdout so `docker logs aptly-api` shows everything.
+exec 2>&1
+
 APTLY_CONF="/root/.aptly.conf"
 
 init_repos() {
@@ -24,7 +27,7 @@ init_repos() {
     # Publish each repo to its own prefix (<name>/bookworm) to avoid collisions.
     # Plain string prefix is fully supported by all aptly versions; no named endpoints needed.
     for repo in dev staging prod; do
-        if ! aptly publish show "${repo}" bookworm > /dev/null 2>&1; then
+        if ! aptly publish show bookworm "${repo}" > /dev/null 2>&1; then
             echo "[aptly] Publishing repo: ${repo}"
             # On first run without a GPG key, use --skip-signing for local dev.
             # In production, import the GPG key first (see README).

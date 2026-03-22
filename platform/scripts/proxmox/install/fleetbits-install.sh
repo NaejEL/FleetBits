@@ -215,7 +215,23 @@ systemctl daemon-reload
 systemctl enable fleetbits.service
 success "fleetbits.service enabled — stack will auto-start on boot."
 
-# ── Create update script ───────────────────────────────────────────────────────
+# ── Auto-login root on tty1 (Proxmox console) ─────────────────────────────────
+info "Configuring auto-login root on tty1..."
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+EOF
+systemctl daemon-reload
+success "Auto-login configured — Proxmox console will log in as root automatically."
+
+# ── Set root password (shown in install summary for SSH access if needed) ────────
+ROOT_PASSWORD=$(gen_password)
+echo "root:${ROOT_PASSWORD}" | chpasswd
+success "Root password set."
+
+# ── Install update script ──────────────────────────────────────────────────────
 cp "${INSTALL_DIR}/FleetBits-platform/scripts/update.sh" /usr/local/bin/fleetbits-update
 chmod +x /usr/local/bin/fleetbits-update
 success "Update script installed at /usr/local/bin/fleetbits-update"
@@ -250,10 +266,17 @@ echo ""
 echo -e "  ${YLW}Aptly repo (public key for apt clients):${NC}"
 echo -e "    https://repo.${FLEET_DOMAIN}/fleetbits.asc"
 echo ""
-echo -e "  ${YLW}Nginx reverse proxy config:${NC}"
-echo -e "    Copy ${INSTALL_DIR}/FleetBits-platform/scripts/proxmox/nginx-example.conf"
-echo -e "    to /etc/nginx/sites-available/${FLEET_DOMAIN} on your Proxmox host."
-echo -e "    Replace 'CT_IP' with: ${CT_IP}"
+echo -e "  ${YLW}Reverse proxy (Nginx Proxy Manager):${NC}"
+echo -e "    Add these proxy hosts in NPM pointing to CT IP: ${CT_IP}"
+echo -e "    ${FLEET_DOMAIN}             → http://${CT_IP}:80"
+echo -e "    grafana.${FLEET_DOMAIN}     → http://${CT_IP}:80"
+echo -e "    api.${FLEET_DOMAIN}         → http://${CT_IP}:80"
+echo -e "    repo.${FLEET_DOMAIN}        → http://${CT_IP}:80"
+echo -e "    headscale.${FLEET_DOMAIN}   → http://${CT_IP}:80"
+echo -e "    semaphore.${FLEET_DOMAIN}   → http://${CT_IP}:80"
+echo -e "    metrics.${FLEET_DOMAIN}     → http://${CT_IP}:80"
+echo -e "    logs.${FLEET_DOMAIN}        → http://${CT_IP}:80"
+echo -e "    Enable \"Websockets Support\" for grafana and semaphore hosts."
 echo ""
 echo -e "  ${YLW}To update FleetBits in the future:${NC}"
 echo -e "    fleetbits-update"
@@ -279,6 +302,10 @@ Semaphore
   URL:      https://semaphore.${FLEET_DOMAIN}
   Username: admin
   Password: ${GRAFANA_ADMIN_PASSWORD}
+
+Root (SSH / console fallback)
+  Username: root
+  Password: ${ROOT_PASSWORD}
 
 PostgreSQL
   postgres password: ${POSTGRES_PASSWORD}
