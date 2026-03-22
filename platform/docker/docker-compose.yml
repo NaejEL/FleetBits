@@ -244,7 +244,7 @@ services:
       DEVICE_ID:           "vps-control-plane"
       DEVICE_ROLE:         "control-plane-vps"
       FLEET_API_URL:       "http://fleet-api:8000"
-      FLEET_AGENT_TOKEN:   "${VPS_DEVICE_TOKEN}"
+      FLEET_AGENT_TOKEN:   "${VPS_DEVICE_TOKEN:-}"
       FLEET_METRICS_URL:   "http://prometheus:9090/api/v1/write"
       FLEET_LOGS_URL:      "http://loki:3100/loki/api/v1/push"
       RING:                "0"

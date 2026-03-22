@@ -171,24 +171,40 @@ info "Starting FleetBits stack..."
 docker compose --env-file ../secrets.env up -d
 
 success "Stack started. Waiting for fleet-api to be ready..."
-for i in $(seq 1 60); do
+API_READY=false
+for i in $(seq 1 90); do
     if docker compose --env-file ../secrets.env exec -T fleet-api \
-        curl -sf http://localhost:8000/healthz &>/dev/null 2>&1; then
+        python -c "import urllib.request,sys; \
+u='http://localhost:8000/healthz'; \
+sys.exit(0 if urllib.request.urlopen(u, timeout=2).status == 200 else 1)" \
+        &>/dev/null; then
+        API_READY=true
         success "Fleet API is healthy."
         break
     fi
-    [ "${i}" -lt 60 ] || warn "Fleet API not ready after 60s — it may still be starting. Check: docker logs fleet-api"
+    [ "${i}" -lt 90 ] || warn "Fleet API not ready after 180s — check: docker logs fleet-api"
     sleep 2
 done
 
-# ── Create the initial admin user ──────────────────────────────────────────────
-info "Creating initial admin user in Fleet API..."
-docker compose --env-file ../secrets.env exec -T fleet-api \
-    curl -sf -X POST http://localhost:8000/api/v1/auth/setup \
-    -H "Content-Type: application/json" \
-    -d "{\"username\": \"admin\", \"password\": \"${OPERATOR_PASSWORD}\"}" \
-    && success "Admin user created." \
-    || warn "Could not create admin user (may already exist, or endpoint not implemented yet). Set credentials manually."
+# ── Verify bootstrap admin login ───────────────────────────────────────────────
+# The API seeds OPERATOR_USERNAME/OPERATOR_PASSWORD on first boot when users
+# table is empty. Verify credentials instead of calling deprecated /auth/setup.
+if [ "${API_READY}" = "true" ]; then
+    info "Verifying bootstrap admin login in Fleet API..."
+    if docker compose --env-file ../secrets.env exec -T fleet-api \
+        python -c "import json,urllib.request,sys; \
+data=json.dumps({'username':'admin','password':'${OPERATOR_PASSWORD}'}).encode(); \
+req=urllib.request.Request('http://localhost:8000/api/v1/auth/login', data=data, headers={'Content-Type':'application/json'}); \
+resp=urllib.request.urlopen(req, timeout=5); \
+sys.exit(0 if resp.status == 200 else 1)" \
+        &>/dev/null; then
+        success "Bootstrap admin credentials verified."
+    else
+        warn "Could not verify admin login automatically (existing DB/user may have different password)."
+    fi
+else
+    warn "Skipping admin login verification because Fleet API is not ready yet."
+fi
 
 # ── Create a systemd service for auto-start ────────────────────────────────────
 info "Creating fleetbits.service for auto-start..."
@@ -320,6 +336,17 @@ success "Credentials saved to ${INSTALL_DIR}/credentials.txt"
 echo ""
 read -rp "$(echo -e "${YLW}[?]${NC}   Enroll this VPS as a fleet device for self-monitoring? [y/N]: ")" ENROLL_VPS
 if [[ "${ENROLL_VPS,,}" == "y" ]]; then
+    info "Re-checking Fleet API readiness before enrollment..."
+    if ! docker compose --env-file ../secrets.env exec -T fleet-api \
+        python -c "import urllib.request,sys; \
+u='http://localhost:8000/healthz'; \
+sys.exit(0 if urllib.request.urlopen(u, timeout=2).status == 200 else 1)" \
+        &>/dev/null; then
+        warn "Fleet API still not reachable from inside container. Skipping enrollment for now."
+        warn "Retry later with: bash ${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh --api-url http://localhost:8000 --secrets ${INSTALL_DIR}/FleetBits-platform/secrets.env"
+        exit 0
+    fi
+
     info "Cloning FleetBits-agent (required to build the vps-device container)..."
     if [ -d "${INSTALL_DIR}/FleetBits-agent" ]; then
         git -C "${INSTALL_DIR}/FleetBits-agent" pull --ff-only
