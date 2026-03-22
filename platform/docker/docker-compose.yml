@@ -94,6 +94,9 @@ services:
   semaphore:
     image: semaphoreui/semaphore:v2.10.22
     container_name: semaphore
+    # Proxmox LXC can enforce restrictive FS perms in some paths; run as root
+    # to avoid startup loops when writing generated config files.
+    user: "0"
     environment:
       SEMAPHORE_DB_DIALECT: postgres
       SEMAPHORE_DB_HOST: postgresql

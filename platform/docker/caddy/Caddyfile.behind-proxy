@@ -28,6 +28,13 @@
     }
 }
 
+# ── Fallback host (direct IP:80 access) ───────────────────────────────────────
+# When users browse http://<ct-ip> directly, Host won't match {$FLEET_DOMAIN}.
+# Serve Fleet UI as a convenience for local troubleshooting.
+:80 {
+    reverse_proxy fleet-ui:5000
+}
+
 # ── Operator portal ────────────────────────────────────────────────────────────
 http://{$FLEET_DOMAIN} {
     reverse_proxy fleet-ui:5000
