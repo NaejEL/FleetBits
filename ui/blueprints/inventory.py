@@ -194,6 +194,7 @@ def zone_view(zone_id: str):
         device_services=device_services,
         alerts=alerts,
         events=events,
+        device_roles=sorted({d["role"] for d in devices if d.get("role")}),
     )
 
 

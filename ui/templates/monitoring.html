@@ -10,110 +10,14 @@
   <span class="page-refresh">Refreshed: <span id="refresh-time">—</span></span>
 </div>
 
-<!-- Host Vitals -->
+<!-- Host Vitals — placeholder until 3.6 Grafana iframe embedding -->
 <section class="card-section">
   <h2 class="section-title">HOST VITALS</h2>
-  <div class="stat-grid" style="grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));">
-
-    <!-- CPU -->
-    <div class="stat-card
-      {%- if host.cpu_pct is none %} stat-neutral
-      {%- elif host.cpu_pct > 85 %} stat-critical
-      {%- elif host.cpu_pct > 65 %} stat-warn
-      {%- else %} stat-ok{%- endif %}">
-      <div class="stat-value">
-        {{ host.cpu_pct if host.cpu_pct is not none else '—' }}<span class="stat-total">{% if host.cpu_pct is not none %}%{% endif %}</span>
-      </div>
-      <div class="stat-label">CPU Usage</div>
-      {% if host.cpu_pct is not none %}
-        <div class="gauge-bar">
-          <div class="gauge-fill {% if host.cpu_pct > 85 %}critical{% elif host.cpu_pct > 65 %}warn{% else %}ok{% endif %}"
-               style="width: {{ [host.cpu_pct, 100] | min }}%"></div>
-        </div>
-      {% endif %}
-    </div>
-
-    <!-- Memory -->
-    <div class="stat-card
-      {%- if host.mem_pct is none %} stat-neutral
-      {%- elif host.mem_pct > 90 %} stat-critical
-      {%- elif host.mem_pct > 75 %} stat-warn
-      {%- else %} stat-ok{%- endif %}">
-      <div class="stat-value">
-        {{ host.mem_pct if host.mem_pct is not none else '—' }}<span class="stat-total">{% if host.mem_pct is not none %}%{% endif %}</span>
-      </div>
-      <div class="stat-label">Memory</div>
-      {% if host.mem_pct is not none %}
-        <div class="gauge-bar">
-          <div class="gauge-fill {% if host.mem_pct > 90 %}critical{% elif host.mem_pct > 75 %}warn{% else %}ok{% endif %}"
-               style="width: {{ [host.mem_pct, 100] | min }}%"></div>
-        </div>
-        <div class="stat-sub2">{{ host.mem_used }} / {{ host.mem_total }}</div>
-      {% endif %}
-    </div>
-
-    <!-- Disk -->
-    <div class="stat-card
-      {%- if host.disk_pct is none %} stat-neutral
-      {%- elif host.disk_pct > 90 %} stat-critical
-      {%- elif host.disk_pct > 75 %} stat-warn
-      {%- else %} stat-ok{%- endif %}">
-      <div class="stat-value">
-        {{ host.disk_pct if host.disk_pct is not none else '—' }}<span class="stat-total">{% if host.disk_pct is not none %}%{% endif %}</span>
-      </div>
-      <div class="stat-label">Disk (/) Used</div>
-      {% if host.disk_pct is not none %}
-        <div class="gauge-bar">
-          <div class="gauge-fill {% if host.disk_pct > 90 %}critical{% elif host.disk_pct > 75 %}warn{% else %}ok{% endif %}"
-               style="width: {{ [host.disk_pct, 100] | min }}%"></div>
-        </div>
-      {% endif %}
-    </div>
-
-    <!-- Load Average -->
-    <div class="stat-card stat-neutral">
-      <div class="stat-value" style="font-size: 22px;">
-        {{ host.load1 if host.load1 is not none else '—' }}
-      </div>
-      <div class="stat-label">Load Avg (1m)</div>
-      {% if host.load5 is not none %}
-        <div class="stat-sub2">5m: {{ host.load5 }} &nbsp;·&nbsp; 15m: {{ host.load15 }}</div>
-      {% endif %}
-    </div>
-
-    <!-- Net RX -->
-    <div class="stat-card stat-neutral">
-      <div class="stat-value" style="font-size: 18px;">{{ host.net_rx }}</div>
-      <div class="stat-label">Net RX / s</div>
-    </div>
-
-    <!-- Net TX -->
-    <div class="stat-card stat-neutral">
-      <div class="stat-value" style="font-size: 18px;">{{ host.net_tx }}</div>
-      <div class="stat-label">Net TX / s</div>
-    </div>
-
-    <!-- Temperature (optional) -->
-    {% if host.temp_c is not none %}
-    <div class="stat-card
-      {%- if host.temp_c > 80 %} stat-critical
-      {%- elif host.temp_c > 65 %} stat-warn
-      {%- else %} stat-ok{%- endif %}">
-      <div class="stat-value">{{ host.temp_c }}<span class="stat-total"> °C</span></div>
-      <div class="stat-label">Temperature</div>
-    </div>
-    {% endif %}
-
-    <!-- Uptime -->
-    <div class="stat-card stat-neutral">
-      <div class="stat-value" style="font-size: 16px; line-height: 1.4;">{{ host.uptime }}</div>
-      <div class="stat-label">Uptime</div>
-    </div>
-
-  </div>
-  {% if host.cpu_pct is none %}
-    <p class="hint" style="margin-top: 12px;"><svg class="icon icon-warn"><use href="#icon-warning"/></svg> node_exporter not reachable — deploy it on the VPS host (port 9100) for live metrics.</p>
-  {% endif %}
+  <p class="hint">
+    <svg class="icon icon-warn"><use href="#icon-warning"/></svg>
+    Host metric cards have been removed. Live CPU, memory, disk, load and network graphs are available in the
+    <strong>Fleet Platform</strong> Grafana dashboard — open Grafana via the link in the sidebar.
+  </p>
 </section>
 
 <!-- Platform Services -->
