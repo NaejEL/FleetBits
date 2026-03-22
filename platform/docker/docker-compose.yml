@@ -134,6 +134,8 @@ services:
       ALERTMANAGER_URL: "http://alertmanager:9093"
       FLEET_ENV: "${FLEET_ENV:-production}"
       FLEET_API_URL: "https://api.${FLEET_DOMAIN}"
+      OPERATOR_USERNAME: "${OPERATOR_USERNAME:-admin}"
+      OPERATOR_PASSWORD: "${OPERATOR_PASSWORD}"
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
