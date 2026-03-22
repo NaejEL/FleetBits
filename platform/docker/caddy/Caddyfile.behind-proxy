@@ -1,86 +1,98 @@
 # Caddyfile.behind-proxy — HTTP-only mode
 #
 # Use this Caddyfile when the FleetBits stack runs behind an upstream reverse
-# proxy (nginx, Traefik, Caddy on the Proxmox host, Cloudflare, etc.) that
-# terminates TLS. Caddy acts as an internal HTTP router only — no ACME/HTTPS.
+# proxy (nginx, Traefik, NPM, Cloudflare, etc.) that terminates TLS.
+# Caddy acts as an internal HTTP router only — no ACME/HTTPS.
 #
 # Activated by docker-compose.override.behind-proxy.yml which mounts this
 # file over the default /etc/caddy/Caddyfile inside the container.
 #
-# DNS requirements:
-#   fleet.yourdomain.com          → Proxmox nginx → LXC IP:80
-#   grafana.fleet.yourdomain.com  → Proxmox nginx → LXC IP:80
-#   api.fleet.yourdomain.com      → Proxmox nginx → LXC IP:80
-#   repo.fleet.yourdomain.com     → Proxmox nginx → LXC IP:80
-#   headscale.fleet.yourdomain.com→ Proxmox nginx → LXC IP:80
-#   semaphore.fleet.yourdomain.com→ Proxmox nginx → LXC IP:80
+# DNS requirements (FLEET_DOMAIN = e.g. fleet.yourdomain.com):
+#   fleet.yourdomain.com          → upstream proxy → LXC IP:80
+#   grafana.fleet.yourdomain.com  → upstream proxy → LXC IP:80
+#   api.fleet.yourdomain.com      → upstream proxy → LXC IP:80
+#   repo.fleet.yourdomain.com     → upstream proxy → LXC IP:80
+#   headscale.fleet.yourdomain.com→ upstream proxy → LXC IP:80
+#   semaphore.fleet.yourdomain.com→ upstream proxy → LXC IP:80
+#   metrics.fleet.yourdomain.com  → upstream proxy → LXC IP:80
+#   logs.fleet.yourdomain.com     → upstream proxy → LXC IP:80
 #
-# All routes are HTTP inside the LXC. The upstream proxy adds X-Forwarded-*
-# headers; Caddy trusts them via the global trusted_proxies server option.
+# All routes are plain HTTP inside the LXC. The upstream proxy adds
+# X-Forwarded-* headers; Caddy trusts them via trusted_proxies below.
+#
+# NOTE: All traffic is handled by a single :80 site block with inline host
+# matchers. This is the canonical Caddy pattern for multi-host HTTP routing on
+# a single port and avoids the site-selection ambiguity that can arise when
+# mixing bare :80 catch-alls with explicit http://hostname site blocks.
 
 {
-    # Disable the admin API on non-loopback for security
     admin  localhost:2019
-    # Trust X-Forwarded-For from the upstream proxy (Nginx/NPM on Proxmox host).
-    # trusted_proxies is a global servers option in Caddy 2.6+ — NOT a site directive.
     servers {
         trusted_proxies static private_ranges
     }
 }
 
-# ── Fallback host (direct IP:80 access) ───────────────────────────────────────
-# When users browse http://<ct-ip> directly, Host won't match {$FLEET_DOMAIN}.
-# Serve Fleet UI as a convenience for local troubleshooting.
 :80 {
-    reverse_proxy fleet-ui:5000
-}
-
-# ── Operator portal ────────────────────────────────────────────────────────────
-http://{$FLEET_DOMAIN} {
-    reverse_proxy fleet-ui:5000
-}
-
-# ── Grafana dashboards ─────────────────────────────────────────────────────────
-http://grafana.{$FLEET_DOMAIN} {
-    reverse_proxy grafana:3000
-}
-
-# ── Fleet API ──────────────────────────────────────────────────────────────────
-http://api.{$FLEET_DOMAIN} {
-    reverse_proxy fleet-api:8000
-}
-
-# ── Aptly .deb repository ──────────────────────────────────────────────────────
-http://repo.{$FLEET_DOMAIN} {
-    reverse_proxy aptly-api:8080
-}
-
-# ── Prometheus remote-write / query (restricted paths) ────────────────────────
-http://metrics.{$FLEET_DOMAIN} {
-    @allowed path /api/v1/write /federate /metrics /api/v1/query /api/v1/query_range /api/v1/labels
-    handle @allowed {
-        reverse_proxy prometheus:9090
+    # ── Operator portal ───────────────────────────────────────────────────────
+    @ui host {$FLEET_DOMAIN}
+    handle @ui {
+        reverse_proxy fleet-ui:5000
     }
-    respond 403
-}
 
-# ── Loki log push (restricted paths) ──────────────────────────────────────────
-http://logs.{$FLEET_DOMAIN} {
-    @allowed path /loki/api/v1/push
-    handle @allowed {
-        reverse_proxy loki:3100
+    # ── Grafana dashboards ────────────────────────────────────────────────────
+    @grafana host grafana.{$FLEET_DOMAIN}
+    handle @grafana {
+        reverse_proxy grafana:3000
     }
-    respond 403
-}
 
-# ── Headscale WireGuard coordination ──────────────────────────────────────────
-http://headscale.{$FLEET_DOMAIN} {
-    reverse_proxy headscale:8080
-}
+    # ── Fleet API ─────────────────────────────────────────────────────────────
+    @api host api.{$FLEET_DOMAIN}
+    handle @api {
+        reverse_proxy fleet-api:8000
+    }
 
-# ── Semaphore Ansible runner ───────────────────────────────────────────────────
-# When running behind-proxy the Proxmox nginx is responsible for restricting
-# access to semaphore.fleet.* — add an allow/deny block in nginx for this.
-http://semaphore.{$FLEET_DOMAIN} {
-    reverse_proxy semaphore:3000
+    # ── Aptly .deb repository ─────────────────────────────────────────────────
+    @repo host repo.{$FLEET_DOMAIN}
+    handle @repo {
+        reverse_proxy aptly-api:8080
+    }
+
+    # ── Headscale WireGuard coordination ──────────────────────────────────────
+    @headscale host headscale.{$FLEET_DOMAIN}
+    handle @headscale {
+        reverse_proxy headscale:8080
+    }
+
+    # ── Semaphore Ansible runner ───────────────────────────────────────────────
+    # Access restriction for Semaphore is handled by the upstream proxy
+    # (add an allow/deny block in nginx/NPM for the semaphore subdomain).
+    @semaphore host semaphore.{$FLEET_DOMAIN}
+    handle @semaphore {
+        reverse_proxy semaphore:3000
+    }
+
+    # ── Prometheus remote-write / query (restricted paths) ────────────────────
+    @metrics host metrics.{$FLEET_DOMAIN}
+    handle @metrics {
+        @allowed path /api/v1/write /federate /metrics /api/v1/query /api/v1/query_range /api/v1/labels
+        handle @allowed {
+            reverse_proxy prometheus:9090
+        }
+        respond 403
+    }
+
+    # ── Loki log push endpoint (restricted paths) ─────────────────────────────
+    @logs host logs.{$FLEET_DOMAIN}
+    handle @logs {
+        @allowed path /loki/api/v1/push
+        handle @allowed {
+            reverse_proxy loki:3100
+        }
+        respond 403
+    }
+
+    # ── Fallback: direct IP:80 access or unknown host ─────────────────────────
+    handle {
+        reverse_proxy fleet-ui:5000
+    }
 }
