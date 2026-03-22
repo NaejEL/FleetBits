@@ -6,7 +6,7 @@
 
 {% block topbar_actions %}
   <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-create-site').showModal()">+ New Site</button>
-  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">⚡ Hotfix</a>
+  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">Hotfix</a>
 {% endblock %}
 
 {% block content %}
@@ -116,9 +116,9 @@
         {% for alert in alerts %}
           <tr class="alert-row severity-{{ alert.labels.severity | default('info') }}">
             <td>
-              {%- if alert.labels.severity == 'critical' %}🔴 P1
-              {%- elif alert.labels.severity == 'warning' %}🟡 P2
-              {%- else %}ℹ️ INFO{% endif %}
+              {%- if alert.labels.severity == 'critical' %}P1
+              {%- elif alert.labels.severity == 'warning' %}P2
+              {%- else %}INFO{% endif %}
             </td>
             <td>{{ alert.labels.device_id | default('—') }}</td>
             <td>{{ alert.annotations.summary | default(alert.labels.alertname) }}</td>
@@ -128,7 +128,7 @@
       </tbody>
     </table>
   {% else %}
-    <p class="empty-state status-ok-text">✅ No open alerts</p>
+    <p class="empty-state status-ok-text">No open alerts</p>
   {% endif %}
 </section>
 

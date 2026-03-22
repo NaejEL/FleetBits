@@ -19,7 +19,7 @@
           <span class="hotfix-id">{{ hf.hotfix_id }}</span>
           <span class="hotfix-device">{{ hf.device_id }}</span>
           <span class="status-badge status-{{ 'ok' if hf.status == 'applied' else 'warning' }}">
-            {%- if hf.status == 'applied' %}✅ applied{%- else %}🔄 {{ hf.status }}{% endif %}
+            {%- if hf.status == 'applied' %}applied{%- else %}{{ hf.status }}{% endif %}
           </span>
         </div>
         <div class="hotfix-detail">
@@ -55,7 +55,7 @@
       </div>
     {% endfor %}
   {% else %}
-    <p class="empty-state status-ok-text">✅ No active hotfixes.</p>
+    <p class="empty-state status-ok-text">No active hotfixes.</p>
   {% endif %}
 </section>
 
@@ -146,7 +146,7 @@
     </div>
 
     <div class="form-row form-row--submit">
-      <button type="submit" class="btn btn-warning">Execute ⚡</button>
+      <button type="submit" class="btn btn-warning">Execute</button>
     </div>
   </form>
 </section>

@@ -138,9 +138,9 @@
             <td><code>{{ t.scrapeUrl }}</code></td>
             <td>
               <span class="health-badge health-{{ t.health }}">
-                {%- if t.health == 'up' %}✅ UP
-                {%- elif t.health == 'down' %}🔴 DOWN
-                {%- else %}⚠ UNKNOWN{% endif %}
+                {%- if t.health == 'up' %}UP
+                {%- elif t.health == 'down' %}DOWN
+                {%- else %}UNKNOWN{% endif %}
               </span>
             </td>
             <td class="text-muted">
@@ -177,9 +177,9 @@
         {% for a in alerts %}
           <tr class="alert-row severity-{{ a.labels.severity | default('info') }}">
             <td>
-              {%- if a.labels.severity == 'critical' %}🔴 P1
-              {%- elif a.labels.severity == 'warning' %}🟡 P2
-              {%- else %}ℹ️ INFO{% endif %}
+              {%- if a.labels.severity == 'critical' %}P1
+              {%- elif a.labels.severity == 'warning' %}P2
+              {%- else %}INFO{% endif %}
             </td>
             <td>{{ a.labels.alertname | default('—') }}</td>
             <td class="text-muted">{{ a.labels.instance | default(a.labels.get('site', '—')) }}</td>
@@ -192,7 +192,7 @@
       </tbody>
     </table>
   {% else %}
-    <p class="empty-state status-ok-text">✅ No active alerts</p>
+    <p class="empty-state status-ok-text">No active alerts</p>
   {% endif %}
 </section>
 

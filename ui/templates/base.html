@@ -29,16 +29,16 @@
 
     <div class="nav-section">Ops</div>
     <li class="nav-item {% if request.endpoint == 'monitoring.platform_monitoring' %}active{% endif %}">
-      <a href="{{ url_for('monitoring.platform_monitoring') }}">📡 Monitoring</a>
+      <a href="{{ url_for('monitoring.platform_monitoring') }}">Monitoring</a>
     </li>
     <li class="nav-item {% if request.endpoint == 'packages.packages_browser' %}active{% endif %}">
-      <a href="{{ url_for('packages.packages_browser') }}">📦 Packages</a>
+      <a href="{{ url_for('packages.packages_browser') }}">Packages</a>
     </li>
     <li class="nav-item {% if request.endpoint == 'admin.profiles_list' %}active{% endif %}">
-      <a href="{{ url_for('admin.profiles_list') }}">🔧 Profiles</a>
+      <a href="{{ url_for('admin.profiles_list') }}">Profiles</a>
     </li>
     <li class="nav-item {% if request.endpoint == 'admin.overrides_list' %}active{% endif %}">
-      <a href="{{ url_for('admin.overrides_list') }}">⚡ Overrides</a>
+      <a href="{{ url_for('admin.overrides_list') }}">Overrides</a>
     </li>
 
     <div class="nav-section">Admin</div>
@@ -54,7 +54,7 @@
 
   <div class="nav-footer">
     <a href="{{ semaphore_url }}" target="_blank" rel="noopener" class="ext-link"
-       title="Requires WireGuard / Headscale connection">⚙ Semaphore ↗</a>
+       title="Requires WireGuard / Headscale connection">Semaphore ↗</a>
   </div>
 </nav>
 
@@ -64,8 +64,8 @@
   <div class="topbar-right">
     {% block topbar_actions %}{% endblock %}
     <a href="{{ grafana_url }}/d/fleet-overview/fleet-overview" target="_blank"
-       rel="noopener" class="btn btn-ghost btn-sm">📊 Grafana ↗</a>
-    <span class="topbar-user">👤 {{ current_user or '—' }}</span>
+       rel="noopener" class="btn btn-ghost btn-sm">Grafana ↗</a>
+    <span class="topbar-user">{{ current_user or '—' }}</span>
     <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline">
       <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
     </form>

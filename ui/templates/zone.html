@@ -13,10 +13,10 @@
 {% block topbar_actions %}
   <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-register-device').showModal()">+ Register Device</button>
   <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-primary btn-sm">⬆ Deploy</a>
-  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">⚡ Hotfix</a>
+  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">Hotfix</a>
   <button class="btn btn-danger btn-sm"
     onclick="if(confirm('Delete zone {{ zone.zone_id }}? All devices in this zone will be unlinked.')) this.closest('form').submit()"
-    form="form-delete-zone">🗑 Delete Zone</button>
+    form="form-delete-zone">Delete Zone</button>
 {% endblock %}
 
 {% block content %}
@@ -29,9 +29,9 @@
         <span>Profile: {{ zone.profile_id | default('—') }}</span>
         &nbsp;·&nbsp;
         <span class="status-badge status-{{ zone.status | default('ok') }}">
-          {%- if zone.status == 'critical' %}🔴 Critical
-          {%- elif zone.status == 'warning' %}🟡 Warning
-          {%- else %}✅ Healthy{% endif %}
+          {%- if zone.status == 'critical' %}Critical
+          {%- elif zone.status == 'warning' %}Warning
+          {%- else %}Healthy{% endif %}
         </span>
       </div>
     </div>
@@ -80,8 +80,8 @@
                 {% for svc in svcs %}
                   <li class="svc-item svc-{{ svc.state | default('unknown') }}">
                     {%- if svc.state == 'active' %}●
-                    {%- elif svc.state == 'activating' %}⚠
-                    {%- else %}🔴{% endif %}
+                    {%- elif svc.state == 'activating' %}!
+                    {%- else %}✗{% endif %}
                     <span class="svc-name">{{ svc.service_name }}</span>
                     <span class="svc-version">{{ svc.version | default('') }}</span>
                   </li>
@@ -92,7 +92,7 @@
             {% endif %}
           </div>
         {% endfor %}
-        <p class="legend">● active &nbsp; ⚠ restarting &nbsp; 🔴 failed</p>
+        <p class="legend">● active &nbsp; ! restarting &nbsp; ✗ failed</p>
       {% else %}
         <p class="empty-state">No devices found in this zone.</p>
       {% endif %}
@@ -103,9 +103,9 @@
   <aside class="zone-actions">
     <h2 class="section-title">ACTIONS</h2>
     <form method="post" action="{{ url_for('deployments.deployment_center') }}">
-      <button type="submit" class="btn btn-secondary btn-full">⬆ Deploy version</button>
+      <button type="submit" class="btn btn-secondary btn-full">Deploy version</button>
     </form>
-    <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-full">⚡ Hotfix</a>
+    <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-full">Hotfix</a>
 
     <h2 class="section-title mt">RECENT EVENTS</h2>
     {% if events %}
@@ -125,11 +125,11 @@
     {% if alerts %}
       <ul class="event-list">
         {% for a in alerts %}
-          <li class="event-item alert-item">🔴 {{ a.annotations.summary | default(a.labels.alertname) }}</li>
+          <li class="event-item alert-item">{{ a.annotations.summary | default(a.labels.alertname) }}</li>
         {% endfor %}
       </ul>
     {% else %}
-      <p class="empty-state status-ok-text">✅ None</p>
+      <p class="empty-state status-ok-text">None</p>
     {% endif %}
   </aside>
 </div><!-- /zone-layout -->

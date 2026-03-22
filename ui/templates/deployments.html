@@ -45,9 +45,9 @@
                   style="width:{% if dep.target_ring > r.ring %}100{% elif dep.target_ring == r.ring %}{{ dep.progress_pct | default(0) }}{% else %}0{% endif %}%"></div>
               </div>
               <span class="ring-pct">
-                {%- if dep.target_ring > r.ring %}100% ✅ done
-                {%- elif dep.target_ring == r.ring %}{{ dep.progress_pct | default(0) }}% 🔄 live
-                {%- else %}0% ⏳ wait{% endif %}
+                {%- if dep.target_ring > r.ring %}100% done
+                {%- elif dep.target_ring == r.ring %}{{ dep.progress_pct | default(0) }}% live
+                {%- else %}0% wait{% endif %}
               </span>
             </div>
           {% endfor %}
@@ -65,7 +65,7 @@
                 style="display:inline">
             <button type="submit" class="btn btn-danger btn-sm"
                     onclick="return confirm('Roll back {{ dep.deployment_id }}?')">
-              ⬇ Rollback ring {{ dep.target_ring }}
+              Rollback ring {{ dep.target_ring }}
             </button>
           </form>
         </div>
@@ -143,10 +143,6 @@
         {% for dep in recent_deployments %}
           <tr>
             <td>
-              {%- if dep.status == 'success' %}✅
-              {%- elif dep.status == 'failed' %}🔴
-              {%- elif dep.status == 'rolled_back' %}⬇️
-              {%- else %}•{% endif %}
               {{ dep.status }}
             </td>
             <td>{{ dep.component }}</td>
@@ -157,7 +153,7 @@
               <form method="post" action="{{ url_for('deployments.rollback', deployment_id=dep.deployment_id) }}"
                     style="display:inline">
                 <button type="submit" class="btn btn-ghost btn-xs"
-                        onclick="return confirm('Roll back?')">⬇ Rollback</button>
+                        onclick="return confirm('Roll back?')">Rollback</button>
               </form>
             </td>
           </tr>

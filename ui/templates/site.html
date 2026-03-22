@@ -24,9 +24,9 @@
     <span>{{ zones | length }} zones</span>
     &nbsp;·&nbsp;
     <span class="status-badge status-{{ site.status | default('ok') }}">
-      {%- if site.status == 'critical' %}🔴 Critical
-      {%- elif site.status == 'warning' %}🟡 Warning
-      {%- else %}✅ Healthy{% endif %}
+      {%- if site.status == 'critical' %}Critical
+      {%- elif site.status == 'warning' %}Warning
+      {%- else %}Healthy{% endif %}
     </span>
   </div>
 </div>
@@ -43,9 +43,6 @@
           {%- elif zone.status == 'warning' %} status-warning
           {%- else %} status-ok{% endif %}">
           <div class="zone-card-name">
-            {%- if zone.status == 'critical' %}🔴
-            {%- elif zone.status == 'warning' %}🟡
-            {%- else %}✅{% endif %}
             {{ zone.name | upper }}
           </div>
           <div class="zone-card-devices">{{ devices | length }} device{{ 's' if devices | length != 1 }}</div>
