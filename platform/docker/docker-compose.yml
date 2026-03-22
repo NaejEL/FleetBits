@@ -206,13 +206,29 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: node-exporter
+    pid: host
     command:
+      - "--path.rootfs=/host"
       - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
-    # On a production Linux VPS add these for full host-level metrics:
-    # pid: host
-    # volumes:
-    #   - /:/host:ro,rslave
-    # And add --path.rootfs=/host to command.
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── Container metrics exporter ─────────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.2
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
     restart: unless-stopped
     networks:
       - fleet_net

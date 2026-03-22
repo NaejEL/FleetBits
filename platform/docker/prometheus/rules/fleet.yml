@@ -74,13 +74,13 @@ groups:
             ({{ $labels.site }}/{{ $labels.zone }}) has restarted {{ $value }} times
             in the last 30 minutes — likely crashing on startup.
 
-      # Disk pressure (root filesystem < 10% free)
+      # Disk pressure (root filesystem < 20% free = >80% used)
       - alert: DiskPressure
         expr: |
           (
             node_filesystem_free_bytes{mountpoint="/", fstype!="tmpfs"}
             / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}
-          ) < 0.10
+          ) < 0.20
         for: 10m
         labels:
           severity: P2
@@ -104,7 +104,7 @@ groups:
       - alert: CPUSaturation
         expr: |
           100 - (avg by (device_id, site, zone, device_role)
-            (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+            (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
         for: 10m
         labels:
           severity: P2

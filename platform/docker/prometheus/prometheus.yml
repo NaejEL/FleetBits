@@ -53,6 +53,15 @@ scrape_configs:
       - targets: ["fleet-api:8000"]
     metrics_path: /metrics
 
+  # ── Container metrics (cAdvisor) ──────────────────────────────────────────
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels:
+          device_id: "vps-control-plane"
+          device_role: "control-plane"
+          environment: "production"
+
   # ── Edge device metrics are pushed via remote_write from Grafana Alloy ─────
   # No scrape config needed — Prometheus remote-write receiver is enabled
   # via --web.enable-remote-write-receiver flag in Docker Compose.
