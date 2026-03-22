@@ -97,6 +97,45 @@
         <p class="empty-state">No devices found in this zone.</p>
       {% endif %}
     </section>
+
+    <!-- Effective Manifest -->
+    <section class="card-section">
+      <h2 class="section-title">EFFECTIVE MANIFEST</h2>
+      {% if zone_manifest %}
+        <p class="hint">
+          Baseline from profile
+          <strong>{{ zone_manifest.profile_name }}</strong>
+          — device-level overrides may vary.
+          <a href="{{ url_for('inventory.overview') }}#overrides" class="link-subtle">View overrides →</a>
+        </p>
+        {% if zone_manifest.components %}
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Type</th>
+                <th>Version / Ref</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for comp in zone_manifest.components %}
+                <tr>
+                  <td><strong>{{ comp.name }}</strong></td>
+                  <td class="text-muted">{{ comp.artifactType | default(comp.get('artifact_type', '—')) }}</td>
+                  <td><code>{{ comp.artifactRef | default(comp.get('artifact_ref', '—')) }}</code></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="empty-state">Profile has no components defined yet.</p>
+        {% endif %}
+      {% elif zone.profile_id %}
+        <p class="empty-state">Could not load profile <code>{{ zone.profile_id }}</code>.</p>
+      {% else %}
+        <p class="empty-state">No profile assigned to this zone.</p>
+      {% endif %}
+    </section>
   </div><!-- /zone-main -->
 
   <!-- Actions sidebar -->
@@ -180,6 +219,18 @@
             <option value="1">1 — Canary</option>
             <option value="2">2 — Production</option>
           </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Profile</label>
+          <select name="profile_id" class="form-control">
+            <option value="">— inherit zone default —</option>
+            {% for p in profiles %}
+              <option value="{{ p.profile_id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <span class="form-hint">Leave blank to use the zone's assigned profile</span>
         </div>
       </div>
     </div>

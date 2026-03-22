@@ -137,10 +137,24 @@
   <h2 class="section-title">ACTIVE ROLLOUT</h2>
   {% if active_deployments %}
     {% for dep in active_deployments %}
+      {# Determine which rings are complete based on rollout_mode #}
+      {%- set mode = dep.rollout_mode | default('') -%}
+      {%- set current_ring = 0 if mode == 'ring-0' else (1 if mode == 'ring-1' else (2 if mode == 'ring-2' else -1)) -%}
       <div class="rollout-banner">
-        <span class="rollout-name">{{ dep.component }} {{ dep.version }}</span>
-        <span class="rollout-ring">Ring {{ dep.target_ring }}</span>
+        <span class="rollout-name">{{ dep.artifact_ref | default(dep.component ~ ' ' ~ dep.version) }}</span>
         <span class="rollout-status"><svg class="icon"><use href="#icon-arrows-path"/></svg> {{ dep.status }}</span>
+        {%- if current_ring >= 0 %}
+          <span class="rollout-rings" title="Rollout progress through rings">
+            {%- for r in [0, 1, 2] %}
+              <span class="ring-step
+                {%- if r < current_ring %} ring-done
+                {%- elif r == current_ring %} ring-active
+                {%- else %} ring-pending{%- endif %}">{{ r }}</span>
+            {%- endfor %}
+          </span>
+        {%- else %}
+          <span class="rollout-ring">{{ dep.target_scope | default({}) | tojson }}</span>
+        {%- endif %}
         <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-ghost btn-sm">
           View in Deployment Center →
         </a>
@@ -148,6 +162,37 @@
     {% endfor %}
   {% else %}
     <p class="empty-state">No active rollouts.</p>
+  {% endif %}
+</section>
+
+<!-- Deployment drift -->
+<section class="card-section">
+  <h2 class="section-title">DEPLOYMENT DRIFT</h2>
+  {% if drift_targets %}
+    <p class="hint">
+      <svg class="icon icon-warn"><use href="#icon-warning"/></svg>
+      {{ drift_targets | length }} target(s) have active overrides diverging from the profile baseline.
+      <a href="{{ url_for('admin.overrides_list') }}" class="link-subtle">Manage overrides →</a>
+    </p>
+    <table class="data-table">
+      <thead>
+        <tr><th>Scope</th><th>Target ID</th><th>Overridden Components</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in drift_targets %}
+          <tr>
+            <td><span class="badge">{{ entry.scope }}</span></td>
+            <td><code>{{ entry.target_id }}</code></td>
+            <td>{{ entry.components | join(', ') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state status-ok-text">
+      <svg class="icon icon-ok"><use href="#icon-check"/></svg>
+      No configuration drift — all targets match their profile baseline.
+    </p>
   {% endif %}
 </section>
 

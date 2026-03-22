@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Fleet Manager{% endblock %}</title>
+  <!-- Favicons -->
+  <link rel="icon"             type="image/x-icon"   href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="icon"             type="image/svg+xml"  href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="icon"             type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}">
+  <link rel="apple-touch-icon" sizes="180x180"        href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <link rel="manifest"                                href="{{ url_for('static', filename='site.webmanifest') }}">
+  <meta name="theme-color" content="#0d1117">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet.css') }}">
 </head>
 <body>
@@ -11,8 +18,8 @@
 <!-- ── Sidebar nav ─────────────────────────────────────────────── -->
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-brand">
-    <span class="brand-icon">⬡</span>
-    <span class="brand-name">Fleet Manager</span>
+    <img src="{{ url_for('static', filename='img/logo_transparent.png') }}"
+         alt="FleetBits" class="brand-logo" />
   </div>
 
   <ul class="nav-list">

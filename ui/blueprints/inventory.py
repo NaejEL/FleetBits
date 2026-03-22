@@ -84,6 +84,15 @@ def overview():
     n_warning  = sum(1 for a in alerts if a.get("labels", {}).get("severity") == "warning")
     n_online   = sum(1 for d in devices if d.get("status") == "online")
 
+    # Build drift map: unique (scope, target_id) → list of overridden component names
+    _drift: dict[str, dict] = {}
+    for ov in overrides:
+        key = f"{ov.get('scope')}:{ov.get('target_id')}"
+        if key not in _drift:
+            _drift[key] = {"scope": ov.get("scope"), "target_id": ov.get("target_id"), "components": []}
+        _drift[key]["components"].append(ov.get("component", "?"))
+    drift_targets = list(_drift.values())
+
     stats = {
         "sites":              len(sites),
         "zones":              len(zones),
@@ -101,6 +110,8 @@ def overview():
         sites=sites,
         alerts=alerts,
         active_deployments=deployments,
+        overrides=overrides,
+        drift_targets=drift_targets,
         stats=stats,
     )
 
@@ -186,6 +197,25 @@ def zone_view(zone_id: str):
         except ApiError:
             pass
 
+    profiles = []
+    try:
+        profiles = api.get_profiles()
+    except ApiError:
+        pass
+
+    zone_manifest = None
+    profile_id = zone.get("profile_id")
+    if profile_id:
+        try:
+            profile = api.get_profile(profile_id)
+            zone_manifest = {
+                "profile_name": profile.get("name", profile_id),
+                "profile_id": profile_id,
+                "components": profile.get("baseline_stack", {}).get("components", []),
+            }
+        except ApiError:
+            pass
+
     return render_template(
         "zone.html",
         zone=zone,
@@ -194,6 +224,8 @@ def zone_view(zone_id: str):
         device_services=device_services,
         alerts=alerts,
         events=events,
+        profiles=profiles,
+        zone_manifest=zone_manifest,
         device_roles=sorted({d["role"] for d in devices if d.get("role")}),
     )
 

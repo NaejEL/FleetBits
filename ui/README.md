@@ -1,5 +1,9 @@
 ﻿# FleetBits UI
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/NaejEL/FleetBits-ui/main/static/img/logo.png" alt="FleetBits" width="260" />
+</p>
+
 Operator web interface for the FleetBits fleet management platform.
 
 > **Non-devops user?** This is the app you use every day to manage your fleet. Read the [UI walkthrough](../FleetBits-platform/docs/ui-guide.md) for a screenshot-driven guide. This README is for developers contributing to or deploying the UI.

@@ -10,14 +10,23 @@
   <span class="page-refresh">Refreshed: <span id="refresh-time">—</span></span>
 </div>
 
-<!-- Host Vitals — placeholder until 3.6 Grafana iframe embedding -->
+<!-- Host Vitals — Grafana iframe -->
 <section class="card-section">
-  <h2 class="section-title">HOST VITALS</h2>
-  <p class="hint">
-    <svg class="icon icon-warn"><use href="#icon-warning"/></svg>
-    Host metric cards have been removed. Live CPU, memory, disk, load and network graphs are available in the
-    <strong>Fleet Platform</strong> Grafana dashboard — open Grafana via the link in the sidebar.
-  </p>
+  <h2 class="section-title">
+    HOST VITALS
+    <a href="{{ grafana_url }}/d/platform-services/platform-services"
+       target="_blank" rel="noopener" class="btn btn-ghost btn-xs float-right">⊞ Full dashboard ↗</a>
+  </h2>
+  <div class="grafana-panels grafana-panels--stacked">
+    <div class="grafana-panel">
+      <div class="panel-label">Platform services overview (last 3h)</div>
+      <iframe
+        src="{{ grafana_url }}/d-solo/platform-services/platform-services?panelId=1&orgId=1&theme=dark&from=now-3h&to=now&kiosk"
+        frameborder="0" allowfullscreen></iframe>
+      <a href="{{ grafana_url }}/d/platform-services/platform-services"
+         target="_blank" rel="noopener" class="panel-link">↗ Open in Grafana</a>
+    </div>
+  </div>
 </section>
 
 <!-- Platform Services -->
