@@ -18,10 +18,6 @@ services:
     environment:
       FLEET_DOMAIN: "localhost"
 
-  fleet-api:
-    ports:
-      - "127.0.0.1:8000:8000"
-
   prometheus:
     ports:
       - "9090:9090"
