@@ -173,11 +173,7 @@ docker compose --env-file ../secrets.env up -d
 success "Stack started. Waiting for fleet-api to be ready..."
 API_READY=false
 for i in $(seq 1 90); do
-    if docker compose --env-file ../secrets.env exec -T fleet-api \
-        python -c "import urllib.request,sys; \
-u='http://localhost:8000/healthz'; \
-sys.exit(0 if urllib.request.urlopen(u, timeout=2).status == 200 else 1)" \
-        &>/dev/null; then
+    if curl -sf http://localhost:8000/healthz &>/dev/null; then
         API_READY=true
         success "Fleet API is healthy."
         break
@@ -191,12 +187,9 @@ done
 # table is empty. Verify credentials instead of calling deprecated /auth/setup.
 if [ "${API_READY}" = "true" ]; then
     info "Verifying bootstrap admin login in Fleet API..."
-    if docker compose --env-file ../secrets.env exec -T fleet-api \
-        python -c "import json,urllib.request,sys; \
-data=json.dumps({'username':'admin','password':'${OPERATOR_PASSWORD}'}).encode(); \
-req=urllib.request.Request('http://localhost:8000/api/v1/auth/login', data=data, headers={'Content-Type':'application/json'}); \
-resp=urllib.request.urlopen(req, timeout=5); \
-sys.exit(0 if resp.status == 200 else 1)" \
+    if curl -sf -X POST http://localhost:8000/api/v1/auth/login \
+        -H 'Content-Type: application/json' \
+        -d "{\"username\":\"admin\",\"password\":\"${OPERATOR_PASSWORD}\"}" \
         &>/dev/null; then
         success "Bootstrap admin credentials verified."
     else
@@ -337,12 +330,8 @@ echo ""
 read -rp "$(echo -e "${YLW}[?]${NC}   Enroll this VPS as a fleet device for self-monitoring? [y/N]: ")" ENROLL_VPS
 if [[ "${ENROLL_VPS,,}" == "y" ]]; then
     info "Re-checking Fleet API readiness before enrollment..."
-    if ! docker compose --env-file ../secrets.env exec -T fleet-api \
-        python -c "import urllib.request,sys; \
-u='http://localhost:8000/healthz'; \
-sys.exit(0 if urllib.request.urlopen(u, timeout=2).status == 200 else 1)" \
-        &>/dev/null; then
-        warn "Fleet API still not reachable from inside container. Skipping enrollment for now."
+    if ! curl -sf http://localhost:8000/healthz &>/dev/null; then
+        warn "Fleet API still not reachable. Skipping enrollment for now."
         warn "Retry later with: bash ${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh --api-url http://localhost:8000 --secrets ${INSTALL_DIR}/FleetBits-platform/secrets.env"
         exit 0
     fi
