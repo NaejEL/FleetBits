@@ -29,6 +29,7 @@ services:
     build:
       context: ./prometheus
     container_name: prometheus
+    user: "0"
     volumes:
       - prometheus_data:/prometheus
     command:
@@ -45,6 +46,7 @@ services:
     build:
       context: ./loki
     container_name: loki
+    user: "0"
     volumes:
       - loki_data:/loki
     command: -config.file=/etc/loki/loki.yml
@@ -99,7 +101,8 @@ services:
       SEMAPHORE_DB_NAME: semaphore
       SEMAPHORE_DB_USER: semaphore
       SEMAPHORE_DB_PASS: "${SEMAPHORE_DB_PASSWORD}"
-      SEMAPHORE_PLAYBOOK_PATH: /tmp/semaphore
+      # /tmp/semaphore is not writable in Proxmox LXC; use the named volume path instead
+      SEMAPHORE_PLAYBOOK_PATH: /var/lib/semaphore
       SEMAPHORE_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
       SEMAPHORE_ADMIN_NAME: admin
       SEMAPHORE_ADMIN_EMAIL: admin@fleetbits.local

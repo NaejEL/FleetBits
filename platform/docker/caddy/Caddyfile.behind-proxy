@@ -16,40 +16,40 @@
 #   semaphore.fleet.yourdomain.com→ Proxmox nginx → LXC IP:80
 #
 # All routes are HTTP inside the LXC. The upstream proxy adds X-Forwarded-*
-# headers; Caddy trusts them via the trusted_proxies directive.
+# headers; Caddy trusts them via the global trusted_proxies server option.
 
 {
     # Disable the admin API on non-loopback for security
     admin  localhost:2019
+    # Trust X-Forwarded-For from the upstream proxy (Nginx/NPM on Proxmox host).
+    # trusted_proxies is a global servers option in Caddy 2.6+ — NOT a site directive.
+    servers {
+        trusted_proxies static private_ranges
+    }
 }
 
 # ── Operator portal ────────────────────────────────────────────────────────────
 http://{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     reverse_proxy fleet-ui:5000
 }
 
 # ── Grafana dashboards ─────────────────────────────────────────────────────────
 http://grafana.{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     reverse_proxy grafana:3000
 }
 
 # ── Fleet API ──────────────────────────────────────────────────────────────────
 http://api.{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     reverse_proxy fleet-api:8000
 }
 
 # ── Aptly .deb repository ──────────────────────────────────────────────────────
 http://repo.{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     reverse_proxy aptly-api:8080
 }
 
 # ── Prometheus remote-write / query (restricted paths) ────────────────────────
 http://metrics.{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     @allowed path /api/v1/write /federate /metrics /api/v1/query /api/v1/query_range /api/v1/labels
     handle @allowed {
         reverse_proxy prometheus:9090
@@ -59,7 +59,6 @@ http://metrics.{$FLEET_DOMAIN} {
 
 # ── Loki log push (restricted paths) ──────────────────────────────────────────
 http://logs.{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     @allowed path /loki/api/v1/push
     handle @allowed {
         reverse_proxy loki:3100
@@ -69,7 +68,6 @@ http://logs.{$FLEET_DOMAIN} {
 
 # ── Headscale WireGuard coordination ──────────────────────────────────────────
 http://headscale.{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     reverse_proxy headscale:8080
 }
 
@@ -77,6 +75,5 @@ http://headscale.{$FLEET_DOMAIN} {
 # When running behind-proxy the Proxmox nginx is responsible for restricting
 # access to semaphore.fleet.* — add an allow/deny block in nginx for this.
 http://semaphore.{$FLEET_DOMAIN} {
-    trusted_proxies private_ranges
     reverse_proxy semaphore:3000
 }
