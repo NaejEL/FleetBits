@@ -747,3 +747,15 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .health-up      { color: var(--ok);       border-color: var(--ok); }
 .health-down    { color: var(--critical); border-color: var(--critical); }
 .health-unknown { color: var(--warning);  border-color: var(--warning); }
+
+/* ── SVG icon sprites (Heroicons mini 16×16, MIT licence) ────────────────── */
+svg.icon {
+  width: 14px; height: 14px;
+  display: inline-block; vertical-align: -0.125em;
+  fill: currentColor; flex-shrink: 0;
+}
+svg.icon.icon-lg { width: 18px; height: 18px; }
+.icon-ok    { color: var(--ok); }
+.icon-err   { color: var(--critical); }
+.icon-warn  { color: var(--warning); }
+.icon-muted { color: var(--text-muted); }

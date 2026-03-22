@@ -21,8 +21,8 @@
             <span class="badge">{{ dep.change_id }}</span>
           {% endif %}
           <span class="rollout-status badge-status-{{ dep.status }}">
-            {%- if dep.status == 'in_progress' %}🔄 live
-            {%- elif dep.status == 'pending' %}⏳ pending
+            {%- if dep.status == 'in_progress' %}<svg class="icon"><use href="#icon-arrows-path"/></svg> live
+            {%- elif dep.status == 'pending' %}<svg class="icon icon-muted"><use href="#icon-clock"/></svg> pending
             {%- else %}{{ dep.status }}{% endif %}
           </span>
         </div>

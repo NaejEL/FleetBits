@@ -82,9 +82,9 @@
           {%- else %} status-ok
           {%- endif %}">
           <div class="site-card-status">
-            {%- if site.status == 'critical' %}🔴
-            {%- elif site.status == 'warning' %}🟡
-            {%- else %}✅{% endif %}
+            {%- if site.status == 'critical' %}<svg class="icon icon-lg icon-err"><use href="#icon-x-circle"/></svg>
+            {%- elif site.status == 'warning' %}<svg class="icon icon-lg icon-warn"><use href="#icon-warning"/></svg>
+            {%- else %}<svg class="icon icon-lg icon-ok"><use href="#icon-check"/></svg>{% endif %}
           </div>
           <div class="site-card-name">{{ site.name | upper }}</div>
           <div class="site-card-detail">
@@ -140,7 +140,7 @@
       <div class="rollout-banner">
         <span class="rollout-name">{{ dep.component }} {{ dep.version }}</span>
         <span class="rollout-ring">Ring {{ dep.target_ring }}</span>
-        <span class="rollout-status">🔄 {{ dep.status }}</span>
+        <span class="rollout-status"><svg class="icon"><use href="#icon-arrows-path"/></svg> {{ dep.status }}</span>
         <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-ghost btn-sm">
           View in Deployment Center →
         </a>

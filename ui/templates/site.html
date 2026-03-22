@@ -9,10 +9,10 @@
 
 {% block topbar_actions %}
   <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-create-zone').showModal()">+ New Zone</button>
-  <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-primary btn-sm">⬆ Deploy to site</a>
+  <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-primary btn-sm"><svg class="icon"><use href="#icon-arrow-up"/></svg> Deploy to site</a>
   <button class="btn btn-danger btn-sm"
     onclick="if(confirm('Delete site {{ site.site_id }} and all its zones? This cannot be undone.')) this.closest('form').submit()"
-    form="form-delete-site">🗑 Delete Site</button>
+    form="form-delete-site"><svg class="icon"><use href="#icon-trash"/></svg> Delete Site</button>
 {% endblock %}
 
 {% block content %}
@@ -43,6 +43,9 @@
           {%- elif zone.status == 'warning' %} status-warning
           {%- else %} status-ok{% endif %}">
           <div class="zone-card-name">
+            {%- if zone.status == 'critical' %}<svg class="icon icon-err"><use href="#icon-x-circle"/></svg>
+            {%- elif zone.status == 'warning' %}<svg class="icon icon-warn"><use href="#icon-warning"/></svg>
+            {%- else %}<svg class="icon icon-ok"><use href="#icon-check"/></svg>{% endif %}
             {{ zone.name | upper }}
           </div>
           <div class="zone-card-devices">{{ devices | length }} device{{ 's' if devices | length != 1 }}</div>

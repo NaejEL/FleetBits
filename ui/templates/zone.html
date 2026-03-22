@@ -12,7 +12,7 @@
 
 {% block topbar_actions %}
   <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-register-device').showModal()">+ Register Device</button>
-  <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-primary btn-sm">⬆ Deploy</a>
+  <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-primary btn-sm"><svg class="icon"><use href="#icon-arrow-up"/></svg> Deploy</a>
   <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">Hotfix</a>
   <button class="btn btn-danger btn-sm"
     onclick="if(confirm('Delete zone {{ zone.zone_id }}? All devices in this zone will be unlinked.')) this.closest('form').submit()"

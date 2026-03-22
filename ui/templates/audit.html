@@ -70,6 +70,10 @@
             </td>
             <td>{{ evt.change_id | default('—') }}</td>
             <td>
+              {%- if evt.status == 'success' %}<svg class="icon icon-ok"><use href="#icon-check"/></svg>
+              {%- elif evt.status == 'failed' %}<svg class="icon icon-err"><use href="#icon-x-circle"/></svg>
+              {%- elif evt.status == 'pending' %}<svg class="icon icon-muted"><use href="#icon-clock"/></svg>
+              {%- else %}{% endif %}
               {{ evt.status | default('') }}
             </td>
             <td class="detail-cell">{{ evt.detail | default('') }}</td>
