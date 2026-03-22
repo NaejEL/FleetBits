@@ -1,8 +1,6 @@
 ﻿# FleetBits UI
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/NaejEL/FleetBits-ui/main/static/img/logo.png" alt="FleetBits" width="260" />
-</p>
+![FleetBits](https://raw.githubusercontent.com/NaejEL/FleetBits-ui/main/static/img/logo.png)
 
 Operator web interface for the FleetBits fleet management platform.
 
