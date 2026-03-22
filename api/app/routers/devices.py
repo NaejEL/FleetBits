@@ -267,7 +267,7 @@ async def issue_device_token(
                     detail=f"Provision token not scoped to device {device_id}",
                 )
             provision_token_hash = hash_token(raw_token)
-        elif payload.role not in ("operator",):
+        elif payload.role not in ("operator", "admin"):
             raise HTTPException(status_code=403, detail="Insufficient role")
     except JWTError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
