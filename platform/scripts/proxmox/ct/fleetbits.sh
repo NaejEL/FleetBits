@@ -192,6 +192,7 @@ PROXY_CHOICE="${PROXY_CHOICE:-a}"
 
 PROXY_MODE=""
 NGINX_CONFIGURED=false
+NPM_SSL_DONE=false
 
 case "${PROXY_CHOICE,,}" in
 
@@ -233,16 +234,23 @@ case "${PROXY_CHOICE,,}" in
             warn "Proxy hosts were NOT created — add them manually in the NPM UI."
         else
             success "Authenticated to NPM."
+            NPM_HOST_IDS=()
+            NPM_HOST_DOMAINS=()
+            NPM_HOST_WS=()
             npm_add_proxy_host() {
                 local domain="$1" ws="${2:-false}"
-                local payload result
+                local payload result host_id
                 payload="{\"domain_names\":[\"${domain}\"],\"forward_scheme\":\"http\",\"forward_host\":\"${CT_IP}\",\"forward_port\":80,\"block_exploits\":true,\"allow_websocket_upgrade\":${ws},\"ssl_forced\":false,\"certificate_id\":0}"
                 result=$(curl -sf -X POST "${NPM_BASE_URL}/api/nginx/proxy-hosts" \
                     -H "Authorization: Bearer ${NPM_TOKEN}" \
                     -H 'Content-Type: application/json' \
                     -d "${payload}" 2>&1)
-                if echo "${result}" | grep -q '"id"'; then
-                    success "  Created: ${domain}"
+                host_id=$(echo "${result}" | grep -oP '"id"\s*:\s*\K[0-9]+' | head -1)
+                if [[ -n "${host_id}" ]]; then
+                    success "  Created: ${domain} (id=${host_id})"
+                    NPM_HOST_IDS+=("${host_id}")
+                    NPM_HOST_DOMAINS+=("${domain}")
+                    NPM_HOST_WS+=("${ws}")
                 else
                     warn "  Failed: ${domain}  (may already exist — check NPM UI)"
                 fi
@@ -256,8 +264,49 @@ case "${PROXY_CHOICE,,}" in
             npm_add_proxy_host "metrics.${FLEET_DOMAIN}"
             npm_add_proxy_host "logs.${FLEET_DOMAIN}"
             echo ""
-            info "Proxy hosts created in NPM (HTTP only — SSL not yet configured)."
-            info "In NPM: open each host → SSL tab → Request certificate (Let's Encrypt)."
+            info "Proxy hosts created in NPM (HTTP only so far)."
+            echo ""
+            # ── Let's Encrypt SSL ──────────────────────────────────────────────
+            warn "DNS records must already point to ${PUBLIC_IP} for HTTP-01 validation."
+            read -rp "  Request Let's Encrypt SSL certificates for all domains now? [y/N]: " NPM_SSL_YN
+            if [[ "${NPM_SSL_YN,,}" == "y" ]] && [[ ${#NPM_HOST_IDS[@]} -gt 0 ]]; then
+                read -rp "  Email address for Let's Encrypt (expiry notices): " LE_EMAIL
+                LE_EMAIL="${LE_EMAIL:-admin@${FLEET_DOMAIN}}"
+                # Request a single multi-SAN certificate covering all 8 domains
+                DOMAINS_JSON="[\"${FLEET_DOMAIN}\",\"api.${FLEET_DOMAIN}\",\"repo.${FLEET_DOMAIN}\",\"headscale.${FLEET_DOMAIN}\",\"grafana.${FLEET_DOMAIN}\",\"semaphore.${FLEET_DOMAIN}\",\"metrics.${FLEET_DOMAIN}\",\"logs.${FLEET_DOMAIN}\"]"
+                info "Requesting Let's Encrypt certificate (HTTP-01 challenge, up to 60 s)..."
+                CERT_RESULT=$(curl -sf -X POST "${NPM_BASE_URL}/api/nginx/certificates" \
+                    -H "Authorization: Bearer ${NPM_TOKEN}" \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"provider\":\"letsencrypt\",\"domain_names\":${DOMAINS_JSON},\"meta\":{\"letsencrypt_agree\":true,\"dns_challenge\":false,\"letsencrypt_email\":\"${LE_EMAIL}\"}}" \
+                    --max-time 120 2>&1 || true)
+                CERT_ID=$(echo "${CERT_RESULT}" | grep -oP '"id"\s*:\s*\K[0-9]+' | head -1)
+                if [[ -n "${CERT_ID}" ]]; then
+                    success "Certificate issued (id=${CERT_ID}). Forcing HTTPS on all proxy hosts..."
+                    for i in "${!NPM_HOST_IDS[@]}"; do
+                        hid="${NPM_HOST_IDS[$i]}"
+                        dom="${NPM_HOST_DOMAINS[$i]}"
+                        ws="${NPM_HOST_WS[$i]}"
+                        UPD=$(curl -sf -X PUT "${NPM_BASE_URL}/api/nginx/proxy-hosts/${hid}" \
+                            -H "Authorization: Bearer ${NPM_TOKEN}" \
+                            -H 'Content-Type: application/json' \
+                            -d "{\"domain_names\":[\"${dom}\"],\"forward_scheme\":\"http\",\"forward_host\":\"${CT_IP}\",\"forward_port\":80,\"block_exploits\":true,\"allow_websocket_upgrade\":${ws},\"ssl_forced\":true,\"http2_support\":true,\"certificate_id\":${CERT_ID},\"hsts_enabled\":false}" \
+                            2>&1 || true)
+                        if echo "${UPD}" | grep -q '"id"'; then
+                            success "  HTTPS forced: ${dom}"
+                        else
+                            warn "  Could not apply SSL to ${dom} — set cert ${CERT_ID} manually in NPM"
+                        fi
+                    done
+                    NPM_SSL_DONE=true
+                else
+                    warn "Certificate request failed. Details: ${CERT_RESULT}"
+                    warn "Likely cause: DNS not yet propagated or Let's Encrypt rate limit reached."
+                    warn "Apply SSL manually in NPM: each host → SSL tab → Request certificate."
+                fi
+            else
+                info "Skipping SSL. Apply manually: each NPM host → SSL tab → Request certificate."
+            fi
             NGINX_CONFIGURED=true
         fi
     fi
@@ -348,8 +397,13 @@ if [ "${PROXY_MODE}" = "npm" ] && [ "${NGINX_CONFIGURED}" = false ]; then
     echo -e "  2. In NPM: add the proxy hosts listed above, then enable SSL per host."
     echo -e "     Dashboard → Proxy Hosts → Add Proxy Host → SSL tab → Request certificate"
 elif [ "${PROXY_MODE}" = "npm" ] && [ "${NGINX_CONFIGURED}" = true ]; then
-    echo -e "  2. NPM proxy hosts created. ✓"
-    echo -e "     → In NPM: open each host → SSL tab → Request new certificate (Let's Encrypt)."
+    if [ "${NPM_SSL_DONE}" = "true" ]; then
+        echo -e "  2. NPM proxy hosts + SSL certificates configured. ✓"
+        echo -e "     → All domains are accessible over HTTPS."
+    else
+        echo -e "  2. NPM proxy hosts created (HTTP only — SSL not yet configured). ✓"
+        echo -e "     → In NPM: open each host → SSL tab → Request new certificate (Let's Encrypt)."
+    fi
 elif [ "${NGINX_CONFIGURED}" = true ]; then
     echo -e "  2. nginx is configured and running. ✓"
     echo -e "     Config: /etc/nginx/sites-available/fleetbits"
