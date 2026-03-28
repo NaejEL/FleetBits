@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.models.api_key import ApiKey
+from app.models.token import RevokedJWT
 from app.models.device import Device
+from app.models.user import User
 from app.services.token import TokenPayload, decode_token, hash_token
 
 _bearer = HTTPBearer(auto_error=True)
@@ -25,7 +27,56 @@ async def get_current_user(
 
     # ── Try as JWT ──────────────────────────────────────────────────────
     try:
-        return decode_token(raw)
+        payload = decode_token(raw)
+
+        # JWT auth requires a jti for revocation semantics.
+        if not payload.jti:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        revoked = await db.get(RevokedJWT, payload.jti)
+        if revoked is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        user_result = await db.execute(select(User).where(User.username == payload.sub))
+        user = user_result.scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or inactive user",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Enforce immediate role/scope updates: stale claim sets are rejected.
+        if payload.role != user.role or payload.site_scope != user.site_scope:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Stale token claims",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Enforce bulk invalidation cut-off (password reset, disable, etc.).
+        if user.token_valid_after is not None:
+            iat_dt = (
+                datetime.fromtimestamp(payload.iat, tz=UTC)
+                if payload.iat is not None
+                else None
+            )
+            if iat_dt is None or iat_dt < user.token_valid_after:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token invalidated",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+        return payload
     except JWTError:
         pass  # may be an opaque API key — fall through
 

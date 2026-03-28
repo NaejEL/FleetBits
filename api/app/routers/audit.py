@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -26,7 +26,7 @@ async def list_audit_events(
 ):
     """Query the append-only audit log.
 
-    site_manager role is automatically scoped to their site via target JSONB containment.
+    Users with site_scope are automatically scoped to their site via target JSONB fields.
     """
     q = select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
 
@@ -39,9 +39,14 @@ async def list_audit_events(
     if until:
         q = q.where(AuditEvent.created_at <= until)
 
-    # site_manager: restrict to events whose target JSON contains their site
-    if user.role == "site_manager" and user.site_scope:
-        q = q.where(AuditEvent.target["site"].astext == user.site_scope)
+    # Non-admin users with site_scope: restrict to events for their site.
+    if user.role != "admin" and user.site_scope:
+        q = q.where(
+            or_(
+                AuditEvent.target["site"].astext == user.site_scope,
+                AuditEvent.target["siteId"].astext == user.site_scope,
+            )
+        )
 
     result = await db.execute(q)
     return result.scalars().all()

@@ -10,6 +10,7 @@ Three token kinds:
 
 import hashlib
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
@@ -31,6 +32,8 @@ class TokenPayload(BaseModel):
     site_scope: str | None = None          # non-null for site_manager role
     allowed_device_ids: list[str] | None = None  # non-null for provision tokens
     exp: int
+    iat: int | None = None
+    jti: str | None = None
 
 
 # ───────────────────────────────────────────────────
@@ -47,11 +50,14 @@ def create_operator_token(
     if expires_delta is None:
         expires_delta = timedelta(minutes=settings.FLEET_JWT_EXPIRE_MINUTES)
 
-    expire = datetime.now(UTC) + expires_delta
+    issued_at = datetime.now(UTC)
+    expire = issued_at + expires_delta
     payload = {
         "sub": sub,
         "role": role,
+        "iat": issued_at,
         "exp": expire,
+        "jti": str(uuid.uuid4()),
     }
     if site_scope is not None:
         payload["site_scope"] = site_scope
@@ -85,6 +91,8 @@ def create_provision_token(
         "role": "technician",
         "allowed_device_ids": allowed_device_ids,
         "exp": expires_at,
+        "iat": datetime.now(UTC),
+        "jti": str(uuid.uuid4()),
     }
     raw = jwt.encode(payload, _SECRET, algorithm=_ALGORITHM)
     return raw, expires_at
@@ -114,3 +122,35 @@ def generate_device_token() -> str:
 def hash_token(raw_token: str) -> str:
     """Return SHA-256 hex digest of a raw token for safe storage."""
     return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+# ───────────────────────────────────────────────────
+# Per-device MQTT credentials
+# ───────────────────────────────────────────────────
+
+def generate_mqtt_credentials(device_id: str) -> tuple[str, str]:
+    """Generate per-device MQTT username and password.
+
+    Returns:
+        (mqtt_username, mqtt_password_plaintext)
+        Store hash_mqtt_password(mqtt_password_plaintext) in DB.
+    """
+    from app.services.passwords import hash_password
+    
+    # Username: device_<device_id>
+    mqtt_username = f"device_{device_id}"
+    # Password: random 24-byte URL-safe string
+    mqtt_password = secrets.token_urlsafe(24)
+    return mqtt_username, mqtt_password
+
+
+def hash_mqtt_password(password: str) -> str:
+    """Hash MQTT password using bcrypt (same as user passwords)."""
+    from app.services.passwords import hash_password
+    return hash_password(password)
+
+
+def verify_mqtt_password(password: str, hashed: str) -> bool:
+    """Verify MQTT password using bcrypt."""
+    from app.services.passwords import verify_password
+    return verify_password(password, hashed)

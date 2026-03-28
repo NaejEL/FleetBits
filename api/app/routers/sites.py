@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -12,16 +13,28 @@ from app.services.token import TokenPayload
 router = APIRouter(prefix="/sites", tags=["sites"])
 
 
+def _is_site_scoped_user(user: TokenPayload) -> bool:
+    return user.role != "admin" and bool(user.site_scope)
+
+
+async def _get_scoped_site(db: AsyncSession, site_id: str, user: TokenPayload) -> Site | None:
+    q = select(Site).where(Site.site_id == site_id)
+    if _is_site_scoped_user(user):
+        q = q.where(Site.site_id == user.site_scope)
+    result = await db.execute(q)
+    return result.scalar_one_or_none()
+
+
 @router.get("", response_model=list[SiteRead])
 async def list_sites(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
-    result = await db.execute(select(Site))
-    sites = result.scalars().all()
-    if user.role == "site_manager" and user.site_scope:
-        sites = [s for s in sites if s.site_id == user.site_scope]
-    return sites
+    q = select(Site)
+    if _is_site_scoped_user(user):
+        q = q.where(Site.site_id == user.site_scope)
+    result = await db.execute(q)
+    return result.scalars().all()
 
 
 @router.get("/{site_id}", response_model=SiteRead)
@@ -30,11 +43,9 @@ async def get_site(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
-    site = await db.get(Site, site_id)
+    site = await _get_scoped_site(db, site_id, user)
     if site is None:
         raise HTTPException(status_code=404, detail="Site not found")
-    if user.role == "site_manager" and user.site_scope != site_id:
-        raise HTTPException(status_code=403, detail="Access denied")
     return site
 
 
@@ -45,9 +56,15 @@ async def create_site(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
+    if _is_site_scoped_user(user) and user.site_scope != body.site_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     site = Site(**body.model_dump())
     db.add(site)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail=f"Site {body.site_id} already exists") from exc
     await write_audit_event(
         db,
         action="site.created",
@@ -67,9 +84,10 @@ async def update_site(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    site = await db.get(Site, site_id)
+    site = await _get_scoped_site(db, site_id, user)
     if site is None:
         raise HTTPException(status_code=404, detail="Site not found")
+
     for key, val in body.model_dump(exclude_none=True).items():
         setattr(site, key, val)
     await write_audit_event(
@@ -91,9 +109,10 @@ async def delete_site(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    site = await db.get(Site, site_id)
+    site = await _get_scoped_site(db, site_id, user)
     if site is None:
         raise HTTPException(status_code=404, detail="Site not found")
+
     await db.delete(site)
     await write_audit_event(
         db,

@@ -7,8 +7,10 @@ from app.routers import (
     observability,
     operations,
     overrides,
+    packages,
     profiles,
     sites,
+    telemetry,
     zones,
 )
 
@@ -21,7 +23,9 @@ __all__ = [
     "observability",
     "operations",
     "overrides",
+    "packages",
     "profiles",
     "sites",
+    "telemetry",
     "zones",
 ]

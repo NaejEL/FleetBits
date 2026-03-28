@@ -34,18 +34,22 @@ async def resolve_manifest(db: AsyncSession, *, device_id: str) -> dict | None:
     components: dict[str, dict] = {}
     profile_id: str | None = None
 
-    if device.zone_id:
+    if device.profile_id:
+        profile_id = device.profile_id
+    elif device.zone_id:
         zone_result = await db.execute(select(Zone).where(Zone.zone_id == device.zone_id))
         zone = zone_result.scalar_one_or_none()
         if zone and zone.profile_id:
             profile_id = zone.profile_id
-            profile_result = await db.execute(
-                select(Profile).where(Profile.profile_id == zone.profile_id)
-            )
-            profile = profile_result.scalar_one_or_none()
-            if profile:
-                for comp in profile.baseline_stack.get("components", []):
-                    components[comp["name"]] = {**comp, "origin": "profile"}
+
+    if profile_id:
+        profile_result = await db.execute(
+            select(Profile).where(Profile.profile_id == profile_id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        if profile:
+            for comp in profile.baseline_stack.get("components", []):
+                components[comp["name"]] = {**comp, "origin": "profile"}
 
     # Layers 2-4 — site / zone / device overrides (non-reconciled, non-expired)
     now = datetime.now(UTC)

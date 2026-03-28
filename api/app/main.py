@@ -14,6 +14,31 @@ from app.services.passwords import hash_password
 
 _log = logging.getLogger(__name__)
 
+_INSECURE_JWT_DEFAULT = "dev-jwt-secret-change-in-production"
+_INSECURE_OPERATOR_PASSWORD_DEFAULT = "change-me-immediately"
+
+
+def _validate_security_settings() -> None:
+    """Fail fast on insecure or contradictory security configuration."""
+
+    if not settings.FLEET_JWT_SECRET or settings.FLEET_JWT_SECRET == _INSECURE_JWT_DEFAULT:
+        raise RuntimeError(
+            "Refusing to start: FLEET_JWT_SECRET is unset or using the insecure default"
+        )
+
+    if not settings.OPERATOR_PASSWORD or settings.OPERATOR_PASSWORD == _INSECURE_OPERATOR_PASSWORD_DEFAULT:
+        raise RuntimeError(
+            "Refusing to start: OPERATOR_PASSWORD is unset or using the insecure default"
+        )
+
+    if len(settings.FLEET_JWT_SECRET) < 32:
+        raise RuntimeError("Refusing to start: FLEET_JWT_SECRET must be at least 32 characters long")
+
+    if settings.ALLOW_ALL_ORIGINS and settings.FLEET_ENV != "development":
+        raise RuntimeError(
+            "Refusing to start: ALLOW_ALL_ORIGINS=true is only permitted in development"
+        )
+
 # ──────────────────────────────────────────────────────────
 # Lifespan: create tables on fresh dev start (Alembic handles prod)
 # and seed first admin from env vars when users table is empty.
@@ -21,6 +46,8 @@ _log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _validate_security_settings()
+
     if settings.FLEET_ENV == "development":
         async with engine.begin() as conn:
             import app.models  # noqa: F401 — populate Base.metadata
@@ -72,8 +99,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.FLEET_ENV == "development" else [],
-    allow_credentials=True,
+    allow_origins=["*"] if settings.ALLOW_ALL_ORIGINS else [],
+    allow_credentials=not settings.ALLOW_ALL_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -120,8 +147,10 @@ from app.routers import (  # noqa: E402
     observability,
     operations,
     overrides,
+    packages,
     profiles,
     sites,
+    telemetry,
     zones,
 )
 
@@ -138,4 +167,6 @@ app.include_router(hotfixes.router, prefix=_V1)
 app.include_router(overrides.router, prefix=_V1)
 app.include_router(operations.router, prefix=_V1)
 app.include_router(observability.router, prefix=_V1)
+app.include_router(telemetry.router, prefix=_V1)
 app.include_router(audit.router, prefix=_V1)
+app.include_router(packages.router, prefix=_V1)

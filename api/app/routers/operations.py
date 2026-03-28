@@ -3,11 +3,14 @@ import re
 from pydantic import BaseModel, field_validator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
 from app.dependencies import require_roles
+from app.models.device import Device
+from app.models.zone import Zone
 from app.services import semaphore as sem
 from app.services.audit import write_audit_event
 from app.services.token import TokenPayload
@@ -18,6 +21,28 @@ router = APIRouter(prefix="/operations", tags=["operations"])
 _DEVICE_ID_RE = re.compile(r"^[a-z0-9\-_.]{1,128}$")
 # Permit only safe systemd unit name characters (including @ for template units)
 _UNIT_NAME_RE = re.compile(r"^[a-zA-Z0-9\-_.@:\\]{1,256}$")
+
+
+def _is_site_scoped_user(user: TokenPayload) -> bool:
+    return user.role != "admin" and bool(user.site_scope)
+
+
+async def _get_scoped_device(db: AsyncSession, device_id: str, user: TokenPayload) -> Device | None:
+    result = await db.execute(select(Device).where(Device.device_id == device_id))
+    device = result.scalar_one_or_none()
+    if device is None:
+        return None
+    if not _is_site_scoped_user(user):
+        return device
+
+    site_id = device.site_id
+    if site_id is None and device.zone_id:
+        zone = await db.get(Zone, device.zone_id)
+        site_id = zone.site_id if zone else None
+
+    if site_id != user.site_scope:
+        return None
+    return device
 
 
 class RestartServiceRequest(BaseModel):
@@ -83,6 +108,10 @@ async def restart_service(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
+    device = await _get_scoped_device(db, body.device_id, user)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
     try:
         job_id = await sem.trigger_job(
             template_id=settings.SEMAPHORE_RESTART_TEMPLATE_ID,
@@ -111,6 +140,10 @@ async def run_diagnostics(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
+    device = await _get_scoped_device(db, body.device_id, user)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
     try:
         job_id = await sem.trigger_job(
             template_id=settings.SEMAPHORE_DIAGNOSTICS_TEMPLATE_ID,
@@ -139,6 +172,10 @@ async def collect_logs(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
+    device = await _get_scoped_device(db, body.device_id, user)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
     try:
         job_id = await sem.trigger_job(
             template_id=settings.SEMAPHORE_LOGS_TEMPLATE_ID,

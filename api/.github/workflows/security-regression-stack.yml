@@ -1,0 +1,274 @@
+name: Security Regression (Integration Stack)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-regression-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout FleetBits API
+        uses: actions/checkout@v4
+
+      - name: Checkout FleetBits Platform (compose stack)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/FleetBits-platform
+          path: FleetBits-platform
+
+      - name: Materialize sibling path expected by compose build context
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p FleetBits-api
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'FleetBits-platform' \
+            --exclude 'FleetBits-api' \
+            ./ FleetBits-api/
+
+      - name: Create CI env file for compose
+        shell: bash
+        run: |
+          cat > FleetBits-platform/secrets.ci.env <<'EOF'
+          FLEET_DOMAIN=localhost
+          POSTGRES_PASSWORD=postgres-ci-password
+          FLEET_DB_PASSWORD=fleet-ci-password
+          SEMAPHORE_DB_PASSWORD=semaphore-ci-password
+          GRAFANA_ADMIN_PASSWORD=grafana-ci-password
+          GRAFANA_ANONYMOUS_ENABLED=false
+          SEMAPHORE_API_KEY=semaphore-ci-api-key
+          FLEET_JWT_SECRET=fleet-ci-jwt-secret-please-change
+          FLEET_UI_SECRET_KEY=fleet-ui-ci-secret-key
+          SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY=semaphore-ci-access-key-encryption
+          SEMAPHORE_ADMIN_PASSWORD=semaphore-ci-admin-password
+          FLEET_API_INTERNAL_URL=http://fleet-api:8000
+          GRAFANA_INTERNAL_URL=http://grafana:3000
+          APTLY_GPG_KEY_ID=ci-test-key
+          FLEET_ENV=development
+          ALLOW_ALL_ORIGINS=true
+          FLASK_DEBUG=false
+          TELEMETRY_AUTH_REQUIRED=true
+          TELEMETRY_PROXY_TIMEOUT_SECONDS=15
+          ALERTMANAGER_BASIC_AUTH_USER=admin
+          ALERTMANAGER_BASIC_AUTH_HASH=$2a$14$XsyaN7jCTohY84F5w2B1AepJyI072QtdgQXl3k5iADG7n2AFDzy83
+          OPERATOR_USERNAME=admin
+          OPERATOR_PASSWORD=admin
+          VPS_DEVICE_TOKEN=ci-vps-device-token
+          REPO_KEY_SYNC_INTERVAL_SECONDS=30
+          EOF
+
+      - name: Create CI caddyfile and compose override
+        shell: bash
+        run: |
+          cat > FleetBits-platform/docker/caddy/Caddyfile.ci <<'EOF'
+          :80 {
+              handle /metrics {
+                  respond 403
+              }
+
+              handle /api/v1/write {
+                  rewrite * /api/v1/telemetry/metrics/write
+                  reverse_proxy fleet-api:8000
+              }
+
+              handle /loki/api/v1/push {
+                  rewrite * /api/v1/telemetry/logs/push
+                  reverse_proxy fleet-api:8000
+              }
+
+              handle /api/repos* {
+                  respond 403
+              }
+              handle /repos* {
+                  respond 403
+              }
+              handle /snapshots* {
+                  respond 403
+              }
+              handle /publish* {
+                  respond 403
+              }
+
+              handle /pool/* {
+                  forward_auth fleet-api:8000 {
+                      uri /api/v1/packages/repo/authorize
+                      copy_headers X-Repo-Device-Id X-Repo-Site-Id
+                  }
+                  reverse_proxy aptly-api:8080
+              }
+
+              handle /dists/* {
+                  forward_auth fleet-api:8000 {
+                      uri /api/v1/packages/repo/authorize
+                      copy_headers X-Repo-Device-Id X-Repo-Site-Id
+                  }
+                  reverse_proxy aptly-api:8080
+              }
+
+              respond 404
+          }
+
+          repo.localhost {
+              @aptly_admin path /api/* /repos/* /snapshots/* /publish/*
+              handle @aptly_admin {
+                  respond 403
+              }
+
+              @repo_public_key path /fleetbits.asc
+              handle @repo_public_key {
+                  reverse_proxy aptly-api:8080
+              }
+
+              @repo_packages path /pool/* /dists/*
+              handle @repo_packages {
+                  forward_auth fleet-api:8000 {
+                      uri /api/v1/packages/repo/authorize
+                      copy_headers X-Repo-Device-Id X-Repo-Site-Id
+                  }
+                  reverse_proxy aptly-api:8080
+              }
+
+              respond 403
+          }
+          EOF
+
+          cat > FleetBits-platform/docker/docker-compose.ci.override.yml <<'EOF'
+          services:
+            caddy:
+              command: caddy run --config /etc/caddy/Caddyfile.ci --adapter caddyfile
+              environment:
+                FLEET_DOMAIN: "localhost"
+
+            fleet-api:
+              build:
+                context: ../../FleetBits-api
+                dockerfile: Dockerfile
+              image: fleetbits-api:ci
+              environment:
+                DATABASE_URL: "postgresql+asyncpg://fleet:${FLEET_DB_PASSWORD}@postgresql:5432/fleet"
+                FLEET_ENV: "development"
+                FLEET_API_URL: "http://fleet-api:8000"
+
+            edge-sim:
+              build:
+                context: ..
+                dockerfile: docker/edge-sim/Dockerfile
+              image: fleetbits-edge-sim:ci
+              container_name: fleetbits-edge-sim
+              environment:
+                EDGE_SIM_API_URL: "http://fleet-api:8000"
+                EDGE_SIM_CADDY_URL: "http://caddy"
+                EDGE_SIM_OPERATOR_USERNAME: "${OPERATOR_USERNAME:-admin}"
+                EDGE_SIM_OPERATOR_PASSWORD: "${OPERATOR_PASSWORD}"
+              depends_on:
+                fleet-api:
+                  condition: service_started
+                caddy:
+                  condition: service_started
+              restart: unless-stopped
+              networks:
+                - fleet_net
+          EOF
+
+      - name: Start integration stack
+        working-directory: FleetBits-platform/docker
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose \
+            --env-file ../secrets.ci.env \
+            -f docker-compose.yml \
+            -f docker-compose.ci.override.yml \
+            up -d --build \
+            postgresql prometheus loki fleet-api aptly-api caddy edge-sim
+
+      - name: Wait for API and edge simulator readiness
+        working-directory: FleetBits-platform/docker
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for i in {1..90}; do
+            if docker compose --env-file ../secrets.ci.env -f docker-compose.yml -f docker-compose.ci.override.yml exec -T fleet-api python - <<'PY'
+          import urllib.request
+          urllib.request.urlopen('http://localhost:8000/healthz', timeout=2)
+          print('ok')
+          PY
+            then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "fleet-api readiness probe timed out"
+            exit 1
+          fi
+
+          docker compose --env-file ../secrets.ci.env -f docker-compose.yml -f docker-compose.ci.override.yml exec -T fleet-api python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          url = 'http://edge-sim:18080/state'
+          deadline = time.time() + 180
+          last = None
+          while time.time() < deadline:
+            try:
+              with urllib.request.urlopen(url, timeout=3) as r:
+                data = json.loads(r.read().decode())
+              last = data
+              if data.get('bootstrapped'):
+                print('edge-sim ready')
+                raise SystemExit(0)
+            except Exception as exc:
+              last = {'error': str(exc)}
+            time.sleep(2)
+
+          raise SystemExit(f'edge-sim bootstrap timed out: {last}')
+          PY
+
+      - name: Run security regression suite
+        working-directory: FleetBits-platform/docker
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose \
+            --env-file ../secrets.ci.env \
+            -f docker-compose.yml \
+            -f docker-compose.ci.override.yml \
+            exec -T fleet-api \
+            pytest -q -m security tests/test_security_*.py
+
+      - name: Dump compose logs on failure
+        if: failure()
+        working-directory: FleetBits-platform/docker
+        shell: bash
+        run: |
+          docker compose \
+            --env-file ../secrets.ci.env \
+            -f docker-compose.yml \
+            -f docker-compose.ci.override.yml \
+            logs --no-color --tail=300
+
+      - name: Tear down integration stack
+        if: always()
+        working-directory: FleetBits-platform/docker
+        shell: bash
+        run: |
+          docker compose \
+            --env-file ../secrets.ci.env \
+            -f docker-compose.yml \
+            -f docker-compose.ci.override.yml \
+            down -v --remove-orphans
