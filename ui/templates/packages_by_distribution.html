@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Packages by Distribution — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <a href="{{ url_for('packages.packages_browser') }}">Packages</a>
+  › <strong>By Distribution</strong>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">PACKAGES BY DISTRIBUTION</h1>
+  <p class="page-sub">Browse packages organized by Debian distribution (bookworm, bullseye, buster, trixie, jammy) and deployment channel (dev/staging/prod).</p>
+</div>
+
+<!-- Distribution Tabs -->
+{% if distributions %}
+  <div class="dist-tabs" style="margin: 1.5rem 0; border-bottom: 2px solid #e0e0e0; display: flex; gap: 0; overflow-x: auto;">
+    {% for dist in distributions %}
+      <button class="dist-tab {{ 'active' if loop.first }}"
+              onclick="switchDist('{{ dist.codename }}')"
+              id="dtab-{{ dist.codename }}"
+              style="padding: 0.75rem 1.5rem; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 500; transition: all 0.2s;">
+        <code style="font-size: 0.9rem;">{{ dist.codename }}</code><br>
+        <span style="font-size: 0.75rem; color: #666;">{{ dist.name }}</span>
+      </button>
+    {% endfor %}
+  </div>
+
+  <!-- Distribution Content -->
+  {% for dist in distributions %}
+    <div class="dist-pane {{ 'active' if loop.first }}" id="dpane-{{ dist.codename }}" style="display: {{ 'block' if loop.first else 'none' }};">
+      <!-- Channels: dev, staging, prod -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; margin: 1.5rem 0;">
+        {% for channel in ['dev', 'staging', 'prod'] %}
+          <section class="card-section" style="border: 1px solid #ddd; padding: 1rem;">
+            <h3 class="section-title" style="margin-top: 0;">{{ channel | upper }} CHANNEL</h3>
+            
+            {% set repos = repos_by_dist.get(dist.codename, {}).get(channel, []) %}
+            {% if repos %}
+              {% for repo in repos %}
+                <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f9f9f9; border-radius: 4px;">
+                  <div style="font-weight: 500; margin-bottom: 0.25rem;">
+                    <code>{{ repo.Name | default(repo.name) }}</code>
+                  </div>
+                  <div style="font-size: 0.85rem; color: #666;">
+                    {% if repo.Comment %}
+                      {{ repo.Comment | default('—') }}
+                    {% else %}
+                      <span class="text-muted">No description</span>
+                    {% endif %}
+                  </div>
+                  <div style="font-size: 0.8rem; margin-top: 0.5rem; color: #888;">
+                    {% set c = repo.arch_counts or {} %}
+                    {% set pkg_count = (c.get('amd64', 0) + c.get('arm64', 0) + c.get('armhf', 0) + c.get('other', 0)) %}
+                    Packages: <strong>{{ pkg_count }}</strong>
+                  </div>
+                  <div style="font-size: 0.78rem; margin-top: 0.35rem; color: #666; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <span>amd64: <strong>{{ c.get('amd64', 0) }}</strong></span>
+                    <span>arm64: <strong>{{ c.get('arm64', 0) }}</strong></span>
+                    <span>armhf: <strong>{{ c.get('armhf', 0) }}</strong></span>
+                    {% if c.get('other', 0) > 0 %}<span>other: <strong>{{ c.get('other', 0) }}</strong></span>{% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p class="empty-state" style="margin: 0; padding: 0.5rem 0; color: #999;">No repositories in {{ channel }}</p>
+            {% endif %}
+          </section>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+
+  <!-- Supported Architectures -->
+  <section class="card-section" style="margin-top: 2rem;">
+    <h2 class="section-title">SUPPORTED ARCHITECTURES</h2>
+    <p>The following architectures are available across all distributions and channels:</p>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0;">
+      {% for arch in architectures %}
+        <div style="padding: 1rem; background: #f0f8ff; border-left: 4px solid #007bff; border-radius: 4px;">
+          <div style="font-weight: 600; color: #007bff;">{{ arch.arch }}</div>
+          <div style="font-size: 0.9rem; color: #666; margin-top: 0.25rem;">{{ arch.name }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+{% else %}
+  <section class="card-section">
+    <p class="empty-state">Could not load distributions — ensure the Fleet API is running.</p>
+  </section>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function switchDist(distCodename) {
+  // Clear active states
+  document.querySelectorAll('.dist-tab').forEach(t => {
+    t.style.borderBottom = '3px solid transparent';
+    t.style.color = 'inherit';
+  });
+  document.querySelectorAll('.dist-pane').forEach(p => p.style.display = 'none');
+
+  // Set active for clicked dist
+  const tab = document.getElementById('dtab-' + distCodename);
+  const pane = document.getElementById('dpane-' + distCodename);
+  
+  if (tab) {
+    tab.style.borderBottom = '3px solid #007bff';
+    tab.style.color = '#007bff';
+  }
+  if (pane) {
+    pane.style.display = 'block';
+  }
+}
+</script>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .dist-tab {
+    transition: all 0.2s ease;
+  }
+
+  .dist-tab:hover {
+    background: #f5f5f5;
+  }
+
+  .dist-tab.active {
+    border-bottom-color: #007bff !important;
+    color: #007bff !important;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 1rem;
+    color: #999;
+    font-style: italic;
+  }
+</style>
+{% endblock %}

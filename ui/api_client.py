@@ -128,6 +128,10 @@ def trigger_deployment(deployment_id: str) -> dict:
     return _check(requests.post(f"{FLEET_API_URL}/api/v1/deployments/{deployment_id}/trigger", headers=_headers(), timeout=30)).json()
 
 
+def promote_deployment(deployment_id: str) -> dict:
+    return _check(requests.post(f"{FLEET_API_URL}/api/v1/deployments/{deployment_id}/promote", headers=_headers(), timeout=30)).json()
+
+
 def rollback_deployment(deployment_id: str) -> dict:
     return _check(requests.post(f"{FLEET_API_URL}/api/v1/deployments/{deployment_id}/rollback", headers=_headers(), timeout=30)).json()
 
@@ -328,6 +332,191 @@ def aptly_list_publish() -> list[dict]:
     except Exception:
         pass
     return []
+
+
+# ─── Package Management (via Fleet API) ─────────────────────────────────────
+
+def get_gpg_keys() -> list[dict]:
+    """Fetch list of GPG keys from Fleet API."""
+    try:
+        resp = _check(requests.get(f"{FLEET_API_URL}/api/v1/packages/gpg-keys", headers=_headers(), timeout=10))
+        return resp.json().get("keys", [])
+    except Exception:
+        return []
+
+
+def generate_gpg_key(name: str, email: str, key_type: str = "rsa4096") -> dict:
+    """Generate a new GPG key via Fleet API."""
+    return _check(requests.post(
+        f"{FLEET_API_URL}/api/v1/packages/gpg-keys/generate",
+        headers=_headers(),
+        json={"name": name, "email": email, "key_type": key_type},
+        timeout=30,
+    )).json()
+
+
+def import_gpg_key(armored_key: str) -> dict:
+    """Import an existing GPG key via Fleet API."""
+    return _check(requests.post(
+        f"{FLEET_API_URL}/api/v1/packages/gpg-keys/import",
+        headers=_headers(),
+        json={"armored_key": armored_key},
+        timeout=10,
+    )).json()
+
+
+def delete_gpg_key(key_id: str) -> dict:
+    """Delete a GPG key via Fleet API."""
+    return _check(requests.delete(
+        f"{FLEET_API_URL}/api/v1/packages/gpg-keys/{key_id}",
+        headers=_headers(),
+        timeout=10,
+    )).json()
+
+
+def get_package_repos() -> list[dict]:
+    """List all Aptly repositories via Fleet API."""
+    try:
+        resp = _check(requests.get(f"{FLEET_API_URL}/api/v1/packages/repos", headers=_headers(), timeout=10))
+        return resp.json().get("repos", [])
+    except Exception:
+        return []
+
+
+def get_package_list(repo_name: str) -> list[dict]:
+    """List packages in a repo via Fleet API."""
+    try:
+        resp = _check(requests.get(
+            f"{FLEET_API_URL}/api/v1/packages/repos/{repo_name}/packages",
+            headers=_headers(),
+            timeout=10,
+        ))
+        return resp.json().get("packages", [])
+    except Exception:
+        return []
+
+
+def get_publish_endpoints() -> list[dict]:
+    """List published endpoints via Fleet API."""
+    try:
+        resp = _check(requests.get(f"{FLEET_API_URL}/api/v1/packages/publish", headers=_headers(), timeout=10))
+        return resp.json().get("endpoints", [])
+    except Exception:
+        return []
+
+
+def get_distributions() -> list[dict]:
+    """List available Debian distributions."""
+    try:
+        resp = _check(requests.get(f"{FLEET_API_URL}/api/v1/packages/distributions", headers=_headers(), timeout=10))
+        return resp.json().get("distributions", [])
+    except Exception:
+        return []
+
+
+def get_architectures() -> list[dict]:
+    """List supported architectures."""
+    try:
+        resp = _check(requests.get(f"{FLEET_API_URL}/api/v1/packages/architectures", headers=_headers(), timeout=10))
+        return resp.json().get("architectures", [])
+    except Exception:
+        return []
+
+
+def get_repos_by_distribution(distribution: str | None = None) -> dict:
+    """Get repositories organized by distribution."""
+    try:
+        params = {}
+        if distribution:
+            params["distribution"] = distribution
+        resp = _check(requests.get(
+            f"{FLEET_API_URL}/api/v1/packages/repos-by-distribution",
+            headers=_headers(),
+            params=params,
+            timeout=10,
+        ))
+        return resp.json()
+    except Exception:
+        return {"repos_by_distribution": {}}
+
+
+def upload_package_file(
+    *,
+    file_name: str,
+    file_bytes: bytes,
+    repo: str | None = None,
+    distribution: str | None = None,
+    architecture: str | None = None,
+    is_overwrite: bool = False,
+) -> dict:
+    """Upload a raw .deb file for metadata extraction/validation."""
+    params: dict[str, str] = {"is_overwrite": str(bool(is_overwrite)).lower()}
+    if repo:
+        params["repo"] = repo
+    if distribution:
+        params["distribution"] = distribution
+    if architecture:
+        params["architecture"] = architecture
+
+    token = session.get("jwt")
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    files = {"file": (file_name, file_bytes, "application/vnd.debian.binary-package")}
+    resp = requests.post(
+        f"{FLEET_API_URL}/api/v1/packages/upload",
+        headers=headers,
+        params=params,
+        files=files,
+        timeout=30,
+    )
+    _check(resp)
+    return resp.json()
+
+
+def add_uploaded_package_to_repo(package_reference: str, repo: str, force: bool = False) -> dict:
+    """Add a previously uploaded/scanned package to repository."""
+    return _check(
+        requests.post(
+            f"{FLEET_API_URL}/api/v1/packages/add-to-repo",
+            headers=_headers(),
+            json={
+                "package_reference": package_reference,
+                "repo": repo,
+                "force": force,
+            },
+            timeout=15,
+        )
+    ).json()
+
+
+def get_package_promotion_plan(source_repo: str, target_repo: str) -> dict:
+    """Get promotion diff/plan for source→target repositories."""
+    return _check(
+        requests.get(
+            f"{FLEET_API_URL}/api/v1/packages/promotions/plan",
+            headers=_headers(),
+            params={"source_repo": source_repo, "target_repo": target_repo},
+            timeout=15,
+        )
+    ).json()
+
+
+def execute_package_promotion(source_repo: str, target_repo: str, force_replace: bool = False) -> dict:
+    """Execute package promotion source→target."""
+    return _check(
+        requests.post(
+            f"{FLEET_API_URL}/api/v1/packages/promotions/execute",
+            headers=_headers(),
+            json={
+                "source_repo": source_repo,
+                "target_repo": target_repo,
+                "force_replace": force_replace,
+            },
+            timeout=30,
+        )
+    ).json()
 
 
 # ─── Prometheus (direct — no auth, internal network) ───────────────────────────

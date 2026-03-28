@@ -1,10 +1,12 @@
 """Inventory blueprint — Fleet Overview, Site View, Zone View, Device View."""
 
+from datetime import UTC, datetime, timedelta
 from functools import wraps
 
 from flask import (
     Blueprint,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -32,9 +34,49 @@ def _login_required(f):
     return decorated
 
 
+@bp.route("/api-proxy/sites")
+@_login_required
+def api_proxy_sites():
+    try:
+        return jsonify(api.get_sites())
+    except ApiError as exc:
+        return jsonify({"detail": exc.detail}), exc.status_code
+
+
+@bp.route("/api-proxy/zones")
+@_login_required
+def api_proxy_zones():
+    site_id = request.args.get("site_id", "").strip() or None
+    try:
+        return jsonify(api.get_zones(site_id=site_id))
+    except ApiError as exc:
+        return jsonify({"detail": exc.detail}), exc.status_code
+
+
+@bp.route("/api-proxy/devices")
+@_login_required
+def api_proxy_devices():
+    zone_id = request.args.get("zone_id", "").strip() or None
+    site_id = request.args.get("site_id", "").strip() or None
+    try:
+        return jsonify(api.get_devices(zone_id=zone_id, site_id=site_id))
+    except ApiError as exc:
+        return jsonify({"detail": exc.detail}), exc.status_code
+
+
 @bp.route("/overview")
 @_login_required
 def overview():
+    filters = {
+        "q": request.args.get("q", "").strip(),
+        "site_id": request.args.get("site_id", "").strip(),
+        "zone_id": request.args.get("zone_id", "").strip(),
+        "role": request.args.get("role", "").strip(),
+        "ring": request.args.get("ring", "").strip(),
+        "health": request.args.get("health", "").strip(),
+        "last_seen_minutes": request.args.get("last_seen_minutes", "").strip(),
+    }
+
     sites = []
     alerts = []
     deployments = []
@@ -80,6 +122,14 @@ def overview():
     except ApiError:
         overrides = []
 
+    # Compute per-site zone counts so the template doesn't render "?"
+    zone_count_per_site: dict[str, int] = {}
+    for z in zones:
+        sid = z.get("site_id")
+        if sid:
+            zone_count_per_site[sid] = zone_count_per_site.get(sid, 0) + 1
+    sites = [{**s, "zone_count": zone_count_per_site.get(s.get("site_id", s.get("id", "")), 0)} for s in sites]
+
     n_critical = sum(1 for a in alerts if a.get("labels", {}).get("severity") == "critical")
     n_warning  = sum(1 for a in alerts if a.get("labels", {}).get("severity") == "warning")
     n_online   = sum(1 for d in devices if d.get("status") == "online")
@@ -105,6 +155,70 @@ def overview():
         "active_overrides":   len(overrides),
     }
 
+    zone_map = {z.get("zone_id", ""): z for z in zones}
+    device_roles = sorted({d.get("role") for d in devices if d.get("role")})
+
+    def _parse_ts(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            # handle trailing Z from API timestamps
+            if value.endswith("Z"):
+                value = value[:-1] + "+00:00"
+            dt = datetime.fromisoformat(value)
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except Exception:
+            return None
+
+    def _device_health(d: dict) -> str:
+        status = (d.get("status") or "").lower()
+        if status in ("online", "healthy"):
+            return "online"
+        if status in ("offline", "critical", "error"):
+            return "offline"
+        last_seen = _parse_ts(d.get("last_seen"))
+        if last_seen and (datetime.now(UTC) - last_seen) <= timedelta(minutes=5):
+            return "online"
+        return "offline"
+
+    filtered_devices = list(devices)
+
+    if filters["site_id"]:
+        filtered_devices = [d for d in filtered_devices if d.get("site_id") == filters["site_id"]]
+
+    if filters["zone_id"]:
+        filtered_devices = [d for d in filtered_devices if d.get("zone_id") == filters["zone_id"]]
+
+    if filters["role"]:
+        filtered_devices = [d for d in filtered_devices if (d.get("role") or "") == filters["role"]]
+
+    if filters["ring"].lstrip("-").isdigit():
+        wanted_ring = int(filters["ring"])
+        filtered_devices = [d for d in filtered_devices if d.get("ring") == wanted_ring]
+
+    if filters["health"] in ("online", "offline"):
+        filtered_devices = [d for d in filtered_devices if _device_health(d) == filters["health"]]
+
+    if filters["last_seen_minutes"].isdigit():
+        max_age = int(filters["last_seen_minutes"])
+        cutoff = datetime.now(UTC) - timedelta(minutes=max_age)
+        filtered_devices = [
+            d for d in filtered_devices
+            if (_parse_ts(d.get("last_seen")) and _parse_ts(d.get("last_seen")) >= cutoff)
+        ]
+
+    if filters["q"]:
+        q = filters["q"].lower()
+        filtered_devices = [
+            d for d in filtered_devices
+            if q in (d.get("device_id") or "").lower()
+            or q in (d.get("hostname") or "").lower()
+            or q in (d.get("role") or "").lower()
+        ]
+
+    # Devices registered under the synthetic "control-plane" site (VPS agent)
+    platform_devices = [d for d in devices if d.get("site_id") == "control-plane"]
+
     return render_template(
         "overview.html",
         sites=sites,
@@ -113,6 +227,11 @@ def overview():
         overrides=overrides,
         drift_targets=drift_targets,
         stats=stats,
+        filters=filters,
+        filtered_devices=filtered_devices,
+        device_roles=device_roles,
+        zone_map=zone_map,
+        platform_devices=platform_devices,
     )
 
 
@@ -131,13 +250,17 @@ def site_view(site_id: str):
     except ApiError as exc:
         flash(f"Could not load zones: {exc.detail}", "error")
 
-    # Fetch devices per zone to build health matrix
-    zone_devices: dict[str, list] = {}
-    for z in zones:
-        try:
-            zone_devices[z["zone_id"]] = api.get_devices(zone_id=z["zone_id"])
-        except ApiError:
-            zone_devices[z["zone_id"]] = []
+    # Fetch all site devices once (avoids N+1 API calls when a site has many zones)
+    zone_devices: dict[str, list] = {z["zone_id"]: [] for z in zones}
+    try:
+        site_devices = api.get_devices(site_id=site_id)
+        for d in site_devices:
+            zid = d.get("zone_id")
+            if zid:
+                zone_devices.setdefault(zid, []).append(d)
+    except ApiError:
+        # Keep empty per-zone buckets on failure so template rendering stays stable
+        pass
 
     try:
         recent_audit = api.get_audit(site_id=site_id, limit=10)
@@ -151,6 +274,7 @@ def site_view(site_id: str):
         zones=zones,
         zone_devices=zone_devices,
         events=events,
+        current_site_id=site.get("site_id", site.get("id", "")),
     )
 
 
@@ -227,6 +351,8 @@ def zone_view(zone_id: str):
         profiles=profiles,
         zone_manifest=zone_manifest,
         device_roles=sorted({d["role"] for d in devices if d.get("role")}),
+        current_zone_id=zone.get("zone_id", zone.get("id", "")),
+        current_site_id=site.get("site_id", site.get("id", "")) if site else "",
     )
 
 
@@ -270,6 +396,9 @@ def device_view(device_id: str):
         site=site,
         services=services,
         manifest=manifest,
+        current_device_id=device.get("device_id", device.get("id", "")),
+        current_zone_id=zone.get("zone_id", zone.get("id", "")) if zone else "",
+        current_site_id=site.get("site_id", site.get("id", "")) if site else "",
     )
 
 
@@ -381,6 +510,7 @@ def create_device_post():
         "role": request.form.get("role", "").strip(),
         "zone_id": zone_id or None,
         "site_id": site_id or None,
+        "profile_id": request.form.get("profile_id", "").strip() or None,
         "ring": int(ring_raw) if ring_raw.isdigit() else None,
     }
     if not payload["device_id"] or not payload["hostname"] or not payload["role"]:

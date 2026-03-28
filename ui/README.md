@@ -1,7 +1,5 @@
 ﻿# FleetBits UI
 
-![FleetBits](https://raw.githubusercontent.com/NaejEL/FleetBits-ui/main/static/img/logo.png)
-
 Operator web interface for the FleetBits fleet management platform.
 
 > **Non-devops user?** This is the app you use every day to manage your fleet. Read the [UI walkthrough](../FleetBits-platform/docs/ui-guide.md) for a screenshot-driven guide. This README is for developers contributing to or deploying the UI.
@@ -86,6 +84,18 @@ cp .env.example .env
 
 flask run --port 5000
 ```
+
+### Security contributor guardrails
+
+Enable and run pre-commit hooks before every PR:
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+Security and workflow files are covered by CODEOWNERS review policy.
 
 ---
 

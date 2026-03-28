@@ -99,6 +99,128 @@
   {% endif %}
 </section>
 
+<!-- Platform Infrastructure -->
+<section class="card-section">
+  <h2 class="section-title">
+    PLATFORM INFRASTRUCTURE
+    <a href="{{ url_for('monitoring.platform_monitoring') }}" class="btn btn-ghost btn-xs float-right">Full Monitoring ↗</a>
+  </h2>
+  <div class="site-grid">
+    <a href="{{ url_for('monitoring.platform_monitoring') }}" class="site-card
+      {%- if stats.alerts_critical > 0 %} status-critical
+      {%- elif stats.alerts_warning > 0 %} status-warning
+      {%- else %} status-ok{%- endif %}">
+      <div class="site-card-status">
+        {%- if stats.alerts_critical > 0 %}<svg class="icon icon-lg icon-err"><use href="#icon-x-circle"/></svg>
+        {%- elif stats.alerts_warning > 0 %}<svg class="icon icon-lg icon-warn"><use href="#icon-warning"/></svg>
+        {%- else %}<svg class="icon icon-lg icon-ok"><use href="#icon-check"/></svg>{% endif %}
+      </div>
+      <div class="site-card-name">CONTROL PLANE</div>
+      <div class="site-card-detail">
+        {% if platform_devices %}
+          {{ platform_devices | length }} VPS agent{{ 's' if platform_devices | length != 1 else '' }}
+        {% else %}
+          VPS agent not enrolled
+        {% endif %}
+      </div>
+    </a>
+  </div>
+  <div class="grafana-panels" style="margin-top:1rem">
+    <div class="grafana-panel">
+      <div class="panel-label">Platform services — Container CPU (last 3h)</div>
+      <iframe
+        src="{{ grafana_url }}/d-solo/platform-services/platform-services?panelId=1&orgId=1&theme=dark&from=now-3h&to=now&kiosk"
+        frameborder="0" allowfullscreen></iframe>
+      <a href="{{ grafana_url }}/d/platform-services/platform-services"
+         target="_blank" rel="noopener" class="panel-link">↗ Open in Grafana</a>
+    </div>
+  </div>
+</section>
+
+<!-- Fleet-wide device filter/search -->
+<section class="card-section">
+  <h2 class="section-title">FLEET DEVICE FILTER</h2>
+  <form method="get" action="{{ url_for('inventory.overview') }}" class="filter-row">
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="Search device ID / hostname / role">
+
+    <select name="site_id">
+      <option value="">— All sites —</option>
+      {% for site in sites %}
+        <option value="{{ site.site_id }}" {% if filters.site_id == site.site_id %}selected{% endif %}>{{ site.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="zone_id">
+      <option value="">— All zones —</option>
+      {% for zone in zone_map.values() %}
+        <option value="{{ zone.zone_id }}" {% if filters.zone_id == zone.zone_id %}selected{% endif %}>{{ zone.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="role">
+      <option value="">— All roles —</option>
+      {% for r in device_roles %}
+        <option value="{{ r }}" {% if filters.role == r %}selected{% endif %}>{{ r }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="ring">
+      <option value="">— All rings —</option>
+      <option value="0" {% if filters.ring == '0' %}selected{% endif %}>0 — Lab</option>
+      <option value="1" {% if filters.ring == '1' %}selected{% endif %}>1 — Canary</option>
+      <option value="2" {% if filters.ring == '2' %}selected{% endif %}>2 — Production</option>
+    </select>
+
+    <select name="health">
+      <option value="">— Any health —</option>
+      <option value="online" {% if filters.health == 'online' %}selected{% endif %}>Online</option>
+      <option value="offline" {% if filters.health == 'offline' %}selected{% endif %}>Offline</option>
+    </select>
+
+    <select name="last_seen_minutes">
+      <option value="">— Any last-seen —</option>
+      <option value="5" {% if filters.last_seen_minutes == '5' %}selected{% endif %}>Seen ≤ 5 min</option>
+      <option value="15" {% if filters.last_seen_minutes == '15' %}selected{% endif %}>Seen ≤ 15 min</option>
+      <option value="60" {% if filters.last_seen_minutes == '60' %}selected{% endif %}>Seen ≤ 60 min</option>
+    </select>
+
+    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+    <a href="{{ url_for('inventory.overview') }}" class="btn btn-ghost btn-sm">Reset</a>
+  </form>
+
+  {% if filtered_devices %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>Role</th>
+          <th>Site</th>
+          <th>Zone</th>
+          <th>Ring</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in filtered_devices %}
+          <tr>
+            <td>
+              <a href="{{ url_for('inventory.device_view', device_id=d.device_id) }}">{{ d.device_id }}</a>
+              <div class="text-muted">{{ d.hostname | default('—') }}</div>
+            </td>
+            <td>{{ d.role | default('—') }}</td>
+            <td>{{ d.site_id | default('—') }}</td>
+            <td>{{ d.zone_id | default('—') }}</td>
+            <td>{{ d.ring if d.ring is not none else '—' }}</td>
+            <td>{{ d.last_seen | default('—') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No devices match current filters.</p>
+  {% endif %}
+</section>
+
 <!-- Open alerts -->
 <section class="card-section">
   <h2 class="section-title">OPEN ALERTS</h2>
@@ -206,7 +328,13 @@
     <div class="dialog-body">
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Site ID *</label>
+          <label class="form-label">
+            Site ID *
+            <span class="tip">
+              <span class="tip-icon">?</span>
+              <span class="tip-text">Permanent slug for this site. Lowercase letters, digits and hyphens only. Used in API paths and device IDs. Cannot be changed after creation.</span>
+            </span>
+          </label>
           <input name="site_id" class="form-control" placeholder="paris" required pattern="[a-z0-9\-]+" />
           <span class="form-hint">Lowercase, hyphens only</span>
         </div>
@@ -216,7 +344,13 @@
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Timezone</label>
+        <label class="form-label">
+          Timezone
+          <span class="tip">
+            <span class="tip-icon">?</span>
+            <span class="tip-text">IANA timezone identifier for this site. Used to localise quiet-hour alert windows. Example: Europe/Paris, America/New_York.</span>
+          </span>
+        </label>
         <input name="timezone" class="form-control" placeholder="Europe/Paris" value="UTC" />
         <span class="form-hint">IANA timezone, e.g. Europe/Paris</span>
       </div>

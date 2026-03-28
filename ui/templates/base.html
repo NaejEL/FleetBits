@@ -13,7 +13,12 @@
   <meta name="theme-color" content="#0d1117">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet.css') }}">
 </head>
-<body>
+<body
+  data-endpoint="{{ request.endpoint or '' }}"
+  data-current-site-id="{{ current_site_id or '' }}"
+  data-current-zone-id="{{ current_zone_id or '' }}"
+  data-current-device-id="{{ current_device_id or '' }}"
+>
 
 <!-- ── Sidebar nav ─────────────────────────────────────────────── -->
 <nav class="sidebar" id="sidebar">
@@ -22,33 +27,34 @@
          alt="FleetBits" class="brand-logo" />
   </div>
 
+  <!-- Tree navigation for sites/zones/devices hierarchy -->
+  <div id="sidebar-tree" class="sidebar-tree"></div>
+
+  <!-- Static navigation items -->
   <ul class="nav-list">
-    <div class="nav-section">Fleet</div>
-    <li class="nav-item {% if request.endpoint == 'inventory.overview' %}active{% endif %}">
-      <a href="{{ url_for('inventory.overview') }}">Overview</a>
-    </li>
+    <div class="nav-section">Operations</div>
     <li class="nav-item {% if request.endpoint and request.endpoint.startswith('deployments') %}active{% endif %}">
       <a href="{{ url_for('deployments.deployment_center') }}">Deployments</a>
     </li>
     <li class="nav-item {% if request.endpoint and request.endpoint.startswith('hotfixes') %}active{% endif %}">
       <a href="{{ url_for('hotfixes.hotfix_console') }}">Hotfixes</a>
     </li>
-
-    <div class="nav-section">Ops</div>
     <li class="nav-item {% if request.endpoint == 'monitoring.platform_monitoring' %}active{% endif %}">
       <a href="{{ url_for('monitoring.platform_monitoring') }}">Monitoring</a>
     </li>
-    <li class="nav-item {% if request.endpoint == 'packages.packages_browser' %}active{% endif %}">
-      <a href="{{ url_for('packages.packages_browser') }}">Packages</a>
-    </li>
+
+    <div class="nav-section">Configuration</div>
     <li class="nav-item {% if request.endpoint == 'admin.profiles_list' %}active{% endif %}">
       <a href="{{ url_for('admin.profiles_list') }}">Profiles</a>
     </li>
     <li class="nav-item {% if request.endpoint == 'admin.overrides_list' %}active{% endif %}">
       <a href="{{ url_for('admin.overrides_list') }}">Overrides</a>
     </li>
+    <li class="nav-item {% if request.endpoint == 'packages.packages_browser' %}active{% endif %}">
+      <a href="{{ url_for('packages.packages_browser') }}">Packages</a>
+    </li>
 
-    <div class="nav-section">Admin</div>
+    <div class="nav-section">Compliance</div>
     <li class="nav-item {% if request.endpoint and request.endpoint.startswith('audit') %}active{% endif %}">
       <a href="{{ url_for('audit.audit_log') }}">Audit Log</a>
     </li>
@@ -61,7 +67,7 @@
 
   <div class="nav-footer">
     <a href="{{ semaphore_url }}" target="_blank" rel="noopener" class="ext-link"
-       title="Requires WireGuard / Headscale connection">Semaphore ↗</a>
+      title="Open Semaphore automation UI">Semaphore ↗</a>
   </div>
 </nav>
 
@@ -79,12 +85,15 @@
   </div>
 </div>
 
-<!-- ── Flash messages ──────────────────────────────────────────── -->
+<!-- ── Flash messages (rendered as dismissible toasts) ─────────── -->
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
-    <div class="flash-container">
+    <div id="toast-container" class="toast-container">
       {% for category, msg in messages %}
-        <div class="flash flash-{{ category }}">{{ msg }}</div>
+        <div class="toast toast-{{ category }}" role="alert">
+          <span class="toast-msg">{{ msg }}</span>
+          <button class="toast-close" aria-label="Dismiss" onclick="this.closest('.toast').remove()">✕</button>
+        </div>
       {% endfor %}
     </div>
   {% endif %}
@@ -96,6 +105,30 @@
 </main>
 
 <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sidebar-tree.js') }}"></script>
+<script>
+  // Auto-dismiss toasts after 5 s (or 12 s for api_key toasts)
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.toast').forEach(function (toast) {
+      const delay = toast.classList.contains('toast-api_key') ? 12000 : 5000;
+      setTimeout(function () {
+        toast.style.transition = 'opacity .4s';
+        toast.style.opacity = '0';
+        setTimeout(function () { toast.remove(); }, 400);
+      }, delay);
+    });
+  });
+
+  // Initialize sidebar tree navigation
+  document.addEventListener('DOMContentLoaded', function() {
+    const tree = new SidebarTree({
+      containerId: 'sidebar-tree',
+      apiBaseUrl: '/api-proxy',
+      currentEndpoint: '{{ request.endpoint or "" }}'
+    });
+    tree.init();
+  });
+</script>
 {% block extra_scripts %}{% endblock %}
 
 <!-- ── SVG icon sprites (Heroicons mini 16×16, MIT licence) ────────────────── -->

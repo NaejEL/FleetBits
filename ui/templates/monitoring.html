@@ -2,7 +2,10 @@
 
 {% block title %}Platform Monitoring — Fleet Manager{% endblock %}
 
-{% block breadcrumb %}Platform Monitoring{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Monitoring</strong>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -74,7 +77,11 @@
 
 <!-- Active Alerts -->
 <section class="card-section">
-  <h2 class="section-title">ACTIVE ALERTS</h2>
+  <h2 class="section-title">
+    ACTIVE ALERTS
+    <a href="/alertmanager"
+       target="_blank" rel="noopener" class="btn btn-ghost btn-xs float-right">Open Alertmanager ↗</a>
+  </h2>
   {% if alerts %}
     <table class="data-table">
       <thead>
