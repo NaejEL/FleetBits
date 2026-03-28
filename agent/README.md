@@ -139,6 +139,18 @@ The `build-fleet-agent.yml` workflow:
 
 Use `promote.yml` (manual `workflow_dispatch`) to advance the release through staging → production rings.
 
+### Security contributor guardrails
+
+Enable and run pre-commit hooks before opening a PR:
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+Security/governance files are covered by CODEOWNERS review policy.
+
 ---
 
 ## device-identity.conf reference

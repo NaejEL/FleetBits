@@ -1,6 +1,5 @@
 [Unit]
 Description=Fleet Agent (Grafana Alloy)
-Documentation=https://github.com/NaejEL/FleetBits-agent
 After=network-online.target
 Wants=network-online.target
 # fleet-agent depends on a valid config.alloy — regenerate it before starting.

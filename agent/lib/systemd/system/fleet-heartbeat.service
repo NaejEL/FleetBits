@@ -1,6 +1,5 @@
 [Unit]
 Description=Fleet Agent Heartbeat
-Documentation=https://github.com/NaejEL/FleetBits-agent
 After=network-online.target fleet-agent.service
 Requires=fleet-agent.service
 

@@ -57,6 +57,8 @@ if [ "${ENABLE_MQTT_EXPORTER:-false}" = "true" ]; then
   sed -i \
     -e "s|MQTT_BROKER_HOST_PLACEHOLDER|${MQTT_BROKER_HOST:-localhost}|g" \
     -e "s|MQTT_BROKER_PORT_PLACEHOLDER|${MQTT_BROKER_PORT:-1883}|g" \
+    -e "s|MQTT_USERNAME_PLACEHOLDER|${MQTT_USERNAME:-}|g" \
+    -e "s|MQTT_PASSWORD_PLACEHOLDER|${MQTT_PASSWORD:-}|g" \
     "${OUTPUT_FILE}.tmp"
 else
   # Strip the mqtt_exporter block from the config
@@ -70,6 +72,6 @@ fi
 
 # Atomically replace the output file
 mv "${OUTPUT_FILE}.tmp" "${OUTPUT_FILE}"
-chmod 640 "${OUTPUT_FILE}"
+chmod 600 "${OUTPUT_FILE}"
 
 echo "Generated ${OUTPUT_FILE} for device ${DEVICE_ID} (site=${SITE_ID} zone=${ZONE_ID})"

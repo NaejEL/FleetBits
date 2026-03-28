@@ -90,7 +90,6 @@ for DEB_ARCH in "${BUILD_ARCHES[@]}"; do
     --architecture "${DEB_ARCH}" \
     --maintainer  "FleetBits <fleet@example.com>" \
     --description "Fleet edge agent — Grafana Alloy + identity scripts + systemd units" \
-    --url         "https://github.com/NaejEL/FleetBits-agent" \
     --license     "Apache-2.0" \
     --depends     systemd \
     --depends     curl \

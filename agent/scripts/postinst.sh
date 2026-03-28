@@ -31,6 +31,7 @@ chmod +x /usr/lib/fleet-agent/firstboot.sh
 case "${ACTION}" in
   configure)
     if [ -f "${IDENTITY_FILE}" ]; then
+      chmod 600 "${IDENTITY_FILE}" || true
       echo "fleet-agent: regenerating /etc/alloy/config.alloy from existing identity..."
       /usr/lib/fleet-agent/generate-config.sh || {
         echo "WARNING: generate-config.sh failed — run it manually after deploying ${IDENTITY_FILE}" >&2
@@ -51,6 +52,7 @@ case "${ACTION}" in
     echo "fleet-agent: upgrading from ${2:-unknown} to new version"
 
     if [ -f "${IDENTITY_FILE}" ]; then
+      chmod 600 "${IDENTITY_FILE}" || true
       echo "fleet-agent: regenerating /etc/alloy/config.alloy..."
       /usr/lib/fleet-agent/generate-config.sh || {
         echo "WARNING: generate-config.sh failed during upgrade" >&2
