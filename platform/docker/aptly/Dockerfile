@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     ca-certificates \
     curl \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Create default aptly directories

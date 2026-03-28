@@ -52,3 +52,10 @@ docker/prometheus/data/
 
 # Loki local chunks
 docker/loki/data/
+
+# LLM agent working documents — local only, not for distribution
+GUIDELINES.md
+FEATURE_ROADMAP.md
+SECURITY_ROADMAP.md
+
+scripts/tmp_*.py

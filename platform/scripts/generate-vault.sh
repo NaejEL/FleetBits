@@ -86,11 +86,16 @@ VAULT_POSTGRES_PASSWORD="$(randpass 32)"
 VAULT_FLEET_DB_PASSWORD="$(randpass 32)"
 VAULT_SEMAPHORE_DB_PASSWORD="$(randpass 32)"
 VAULT_GRAFANA_ADMIN_PASSWORD="$(randpass 24)"
+VAULT_FLEET_JWT_SECRET="$(randpass 48)"
+VAULT_FLEET_UI_SECRET_KEY="$(randpass 48)"
+VAULT_SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY="$(randpass 48)"
+VAULT_SEMAPHORE_ADMIN_PASSWORD="$(randpass 24)"
+VAULT_OPERATOR_PASSWORD="$(randpass 24)"
 # Semaphore API key: 32-char alphanumeric (its UI accepts any string; matches its own format)
 VAULT_SEMAPHORE_API_KEY="$(openssl rand -hex 16)"
 VAULT_MQTT_BROKER_PASSWORD="$(randpass 32)"
 
-success "7 random secrets generated."
+success "12 random secrets generated."
 
 # ── Write vault.yml ────────────────────────────────────────────────────────────
 info "Writing ${VAULT_OUT}..."
@@ -113,8 +118,15 @@ vault_semaphore_db_password: "${VAULT_SEMAPHORE_DB_PASSWORD}"
 # ── Grafana ────────────────────────────────────────────────────────────────
 vault_grafana_admin_password: "${VAULT_GRAFANA_ADMIN_PASSWORD}"
 
+# ── Fleet API / UI / session security ─────────────────────────────────────
+vault_fleet_jwt_secret: "${VAULT_FLEET_JWT_SECRET}"
+vault_fleet_ui_secret_key: "${VAULT_FLEET_UI_SECRET_KEY}"
+vault_operator_password: "${VAULT_OPERATOR_PASSWORD}"
+
 # ── Semaphore ──────────────────────────────────────────────────────────────
 vault_semaphore_api_key: "${VAULT_SEMAPHORE_API_KEY}"
+vault_semaphore_access_key_encryption_key: "${VAULT_SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY}"
+vault_semaphore_admin_password: "${VAULT_SEMAPHORE_ADMIN_PASSWORD}"
 
 # ── Headscale enrollment ───────────────────────────────────────────────────
 # Generate after headscale is running:
@@ -143,13 +155,18 @@ success "vault.yml written."
 
 # ── Print summary ──────────────────────────────────────────────────────────────
 echo ""
-echo "  Generated automatically (7 keys):"
+echo "  Generated automatically (12 keys):"
 echo "    vault_aptly_gpg_key_passphrase"
 echo "    vault_postgres_password"
 echo "    vault_fleet_db_password"
 echo "    vault_semaphore_db_password"
 echo "    vault_grafana_admin_password"
+echo "    vault_fleet_jwt_secret"
+echo "    vault_fleet_ui_secret_key"
+echo "    vault_operator_password"
 echo "    vault_semaphore_api_key"
+echo "    vault_semaphore_access_key_encryption_key"
+echo "    vault_semaphore_admin_password"
 echo "    vault_mqtt_broker_password"
 echo ""
 echo "  Requires manual input (6 keys — search for CHANGE_ME in vault.yml):"

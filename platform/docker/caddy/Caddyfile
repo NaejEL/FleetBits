@@ -6,42 +6,89 @@
 
 # ── Operator portal ───────────────────────────────────────────────────────────
 {$FLEET_DOMAIN} {
+    handle_path /semaphore* {
+        reverse_proxy semaphore:3000
+    }
+
+    handle_path /alertmanager* {
+        basic_auth {
+            {$ALERTMANAGER_BASIC_AUTH_USER} {$ALERTMANAGER_BASIC_AUTH_HASH}
+        }
+        reverse_proxy alertmanager:9093
+    }
+
     reverse_proxy fleet-ui:5000
 }
 
 # ── Grafana dashboards ────────────────────────────────────────────────────────
+# SSO gate: validate the fleet_access cookie via Fleet API before forwarding.
+# Only FleetBits-authenticated users reach Grafana — no separate Grafana login.
+# On success Caddy injects X-WEBAUTH-* headers which Grafana uses to auto-login.
 grafana.{$FLEET_DOMAIN} {
+    forward_auth fleet-api:8000 {
+        uri /api/v1/auth/grafana-verify
+        copy_headers X-WEBAUTH-USER X-WEBAUTH-EMAIL X-WEBAUTH-NAME X-WEBAUTH-GROUPS
+        header_up X-Fleet-Proxy-Secret {$GRAFANA_PROXY_SECRET}
+    }
     reverse_proxy grafana:3000
 }
 
 # ── Fleet API (inventory, deployments, heartbeat, provision) ─────────────────
 api.{$FLEET_DOMAIN} {
+    handle /metrics {
+        respond 403
+    }
     reverse_proxy fleet-api:8000
 }
 
 # ── Prometheus remote-write receiver (edge devices push metrics here) ─────────
-# Only the remote_write and federation paths are allowed — all others return 403.
+# Auth is enforced by fleet-api at /api/v1/telemetry/metrics/write.
 metrics.{$FLEET_DOMAIN} {
-    @allowed path /api/v1/write /federate /metrics /api/v1/query /api/v1/query_range /api/v1/labels
-    handle @allowed {
-        reverse_proxy prometheus:9090
+    @write path /api/v1/write
+    handle @write {
+        rewrite * /api/v1/telemetry/metrics/write
+        reverse_proxy fleet-api:8000
     }
     respond 403
 }
 
 # ── Loki log push endpoint (edge devices push logs here) ─────────────────────
-# Only the loki push path is allowed from the public internet.
+# Auth is enforced by fleet-api at /api/v1/telemetry/logs/push.
 logs.{$FLEET_DOMAIN} {
-    @allowed path /loki/api/v1/push
-    handle @allowed {
-        reverse_proxy loki:3100
+    @push path /loki/api/v1/push
+    handle @push {
+        rewrite * /api/v1/telemetry/logs/push
+        reverse_proxy fleet-api:8000
     }
     respond 403
 }
 
 # ── aptly private .deb repository ────────────────────────────────────────────
 repo.{$FLEET_DOMAIN} {
-    reverse_proxy aptly-api:8080
+    @aptly_admin path /api/* /repos/* /snapshots/* /publish/*
+    handle @aptly_admin {
+        respond 403
+    }
+
+    @wireguard remote_ip 100.64.0.0/10
+    handle @wireguard {
+        @repo_public_key path /fleetbits.asc
+        handle @repo_public_key {
+            reverse_proxy aptly-api:8080
+        }
+
+        @repo_packages path /pool/* /dists/*
+        handle @repo_packages {
+            forward_auth fleet-api:8000 {
+                uri /api/v1/packages/repo/authorize
+                copy_headers X-Repo-Device-Id X-Repo-Site-Id
+            }
+            reverse_proxy aptly-api:8080
+        }
+
+        respond 403
+    }
+    respond "Access restricted to WireGuard mesh" 403
 }
 
 # ── Headscale WireGuard coordination server ───────────────────────────────────
@@ -49,14 +96,9 @@ headscale.{$FLEET_DOMAIN} {
     reverse_proxy headscale:8080
 }
 
-# ── Semaphore Ansible runner — WireGuard mesh ONLY ───────────────────────────
-# The 100.64.0.0/10 range is the Headscale/CGNAT address space assigned to
-# all enrolled fleet devices. Only operators on the WireGuard mesh can reach
-# Semaphore. Direct internet access returns 403.
+# ── Semaphore compatibility host ───────────────────────────────────────────────
+# Legacy host kept for compatibility; canonical operator URL is now
+# https://{$FLEET_DOMAIN}/semaphore routed through the main Fleet portal.
 semaphore.{$FLEET_DOMAIN} {
-    @wireguard remote_ip 100.64.0.0/10
-    handle @wireguard {
-        reverse_proxy semaphore:3000
-    }
-    respond "Access restricted to WireGuard mesh" 403
+    reverse_proxy semaphore:3000
 }

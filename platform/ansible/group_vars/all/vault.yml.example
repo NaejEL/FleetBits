@@ -22,8 +22,15 @@ vault_semaphore_db_password: "CHANGE_ME"     # semaphore database user
 # ── Grafana ────────────────────────────────────────────────────────────────
 vault_grafana_admin_password: "CHANGE_ME"
 
+# ── Fleet API / UI / session security ─────────────────────────────────────
+vault_fleet_jwt_secret: "CHANGE_ME"
+vault_fleet_ui_secret_key: "CHANGE_ME"
+vault_operator_password: "CHANGE_ME"
+
 # ── Semaphore ──────────────────────────────────────────────────────────────
 vault_semaphore_api_key: "CHANGE_ME"
+vault_semaphore_access_key_encryption_key: "CHANGE_ME"
+vault_semaphore_admin_password: "CHANGE_ME"
 
 # ── Headscale enrollment ───────────────────────────────────────────────────
 # Reusable pre-auth key for enrolling new devices.

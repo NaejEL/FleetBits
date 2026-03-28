@@ -4,7 +4,7 @@
 # =============================================================================
 # Run this script on your Proxmox VE host shell:
 #
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/NaejEL/FleetBits-platform/main/scripts/proxmox/ct/fleetbits.sh)"
+#   GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/ct/fleetbits.sh)"
 #
 # What this script does:
 #   1. Downloads a Debian 12 LXC template (if not already present)
@@ -30,6 +30,9 @@ info()    { echo -e "${CYN}[INFO]${NC}  $*"; }
 success() { echo -e "${GRN}[OK]${NC}    $*"; }
 warn()    { echo -e "${YLW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
+
+GITHUB_OWNER="${GITHUB_OWNER:-}"
+[[ -n "${GITHUB_OWNER}" ]] || error "GITHUB_OWNER is not set. Export GITHUB_OWNER before running this installer."
 
 # ── Preflight checks ───────────────────────────────────────────────────────────
 [ "$(id -u)" -eq 0 ] || error "Must run as root on the Proxmox host."
@@ -150,13 +153,13 @@ done
 
 # ── Run the install script inside the container ────────────────────────────────
 info "Transferring install script to CT${CTID}..."
-INSTALL_SCRIPT_URL="https://raw.githubusercontent.com/NaejEL/FleetBits-platform/main/scripts/proxmox/install/fleetbits-install.sh"
+INSTALL_SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/FleetBits-platform/main/scripts/proxmox/install/fleetbits-install.sh"
 
 pct exec "${CTID}" -- bash -c "
     apt-get update -qq && apt-get install -y -qq curl
     curl -fsSL '${INSTALL_SCRIPT_URL}' -o /root/fleetbits-install.sh
     chmod +x /root/fleetbits-install.sh
-    FLEET_DOMAIN='${FLEET_DOMAIN}' bash /root/fleetbits-install.sh
+    FLEET_DOMAIN='${FLEET_DOMAIN}' GITHUB_OWNER='${GITHUB_OWNER}' bash /root/fleetbits-install.sh
 "
 
 # ── Get container IP ──────────────────────────────────────────────────────────
@@ -323,7 +326,7 @@ case "${PROXY_CHOICE,,}" in
     else
         info "nginx and certbot are already installed."
     fi
-    NGINX_CONF_URL="https://raw.githubusercontent.com/NaejEL/FleetBits-platform/main/scripts/proxmox/nginx-example.conf"
+    NGINX_CONF_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/FleetBits-platform/main/scripts/proxmox/nginx-example.conf"
     NGINX_DEST="/etc/nginx/sites-available/fleetbits"
     info "Downloading nginx config template..."
     curl -fsSL "${NGINX_CONF_URL}" -o "${NGINX_DEST}.tmp" \

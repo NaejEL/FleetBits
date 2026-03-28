@@ -30,8 +30,10 @@ error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 #   FLEET_DOMAIN=fleet.yourdomain.com bash fleetbits-install.sh
 [[ -n "${FLEET_DOMAIN:-}" ]] || { echo "[ERROR] FLEET_DOMAIN is not set. Run via ct/fleetbits.sh." >&2; exit 1; }
 FLEET_DOMAIN="${FLEET_DOMAIN}"
+GITHUB_OWNER="${GITHUB_OWNER:-}"
 INSTALL_DIR="/opt/fleetbits"
-PLATFORM_REPO="https://github.com/NaejEL/FleetBits-platform.git"
+[[ -n "${GITHUB_OWNER}" ]] || error "GITHUB_OWNER is not set. Export GITHUB_OWNER before running the installer."
+PLATFORM_REPO="https://github.com/${GITHUB_OWNER}/FleetBits-platform.git"
 COMPOSE_DIR="${INSTALL_DIR}/FleetBits-platform/docker"
 
 # ── System packages ────────────────────────────────────────────────────────────
@@ -86,7 +88,26 @@ SEMAPHORE_DB_PASSWORD=$(gen_password)
 GRAFANA_ADMIN_PASSWORD=$(gen_password)
 SEMAPHORE_API_KEY=$(gen_hex)
 FLEET_JWT_SECRET=$(gen_jwt)
+MQTT_BROKER_PASSWORD=$(gen_password)
+FLEET_UI_SECRET_KEY=$(gen_jwt)
+SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY=$(gen_jwt)
+SEMAPHORE_ADMIN_PASSWORD=$(gen_password)
 OPERATOR_PASSWORD=$(gen_password)
+GRAFANA_PROXY_SECRET=$(openssl rand -base64 32)
+FLEETBITS_API_IMAGE="ghcr.io/${GITHUB_OWNER}/fleetbits-api:latest"
+FLEETBITS_UI_IMAGE="ghcr.io/${GITHUB_OWNER}/fleetbits-ui:latest"
+
+# Generate Alertmanager basic auth hash
+ALERTMANAGER_PASSWORD=$(gen_password)
+ALERTMANAGER_BASIC_AUTH_HASH=$(docker run --rm caddy:2 caddy hash-password --plaintext "$ALERTMANAGER_PASSWORD" 2>/dev/null || true)
+if [[ -z "$ALERTMANAGER_BASIC_AUTH_HASH" ]]; then
+    warn "Could not generate Alertmanager bcrypt hash. Using placeholder."
+    ALERTMANAGER_BASIC_AUTH_HASH="CHANGE_ME_BCRYPT_HASH"
+fi
+# Docker Compose interprets '$' in env-file values; escape bcrypt hash dollars.
+if [[ "$ALERTMANAGER_BASIC_AUTH_HASH" == *'$'* && "$ALERTMANAGER_BASIC_AUTH_HASH" != *'$$'* ]]; then
+    ALERTMANAGER_BASIC_AUTH_HASH="${ALERTMANAGER_BASIC_AUTH_HASH//$/$$}"
+fi
 
 # Write secrets.env (readable only by root)
 cat > "${COMPOSE_DIR}/../secrets.env" <<EOF
@@ -103,20 +124,36 @@ FLEET_DB_PASSWORD=${FLEET_DB_PASSWORD}
 SEMAPHORE_DB_PASSWORD=${SEMAPHORE_DB_PASSWORD}
 
 GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+GRAFANA_PROXY_SECRET=${GRAFANA_PROXY_SECRET}
 
 SEMAPHORE_API_KEY=${SEMAPHORE_API_KEY}
 
 FLEET_JWT_SECRET=${FLEET_JWT_SECRET}
+MQTT_BROKER_USERNAME=fleet_exporter
+MQTT_BROKER_PASSWORD=${MQTT_BROKER_PASSWORD}
+FLEET_UI_SECRET_KEY=${FLEET_UI_SECRET_KEY}
+SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY=${SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY}
+SEMAPHORE_ADMIN_PASSWORD=${SEMAPHORE_ADMIN_PASSWORD}
+
+FLEETBITS_API_IMAGE=${FLEETBITS_API_IMAGE}
+FLEETBITS_UI_IMAGE=${FLEETBITS_UI_IMAGE}
 
 FLEET_API_INTERNAL_URL=http://fleet-api:8000
 GRAFANA_INTERNAL_URL=http://grafana:3000
+GRAFANA_PROXY_SECRET=${GRAFANA_PROXY_SECRET}
 
 APTLY_GPG_KEY_ID=
 
 FLEET_ENV=production
+ALLOW_ALL_ORIGINS=false
+FLASK_DEBUG=false
 
 OPERATOR_USERNAME=admin
 OPERATOR_PASSWORD=${OPERATOR_PASSWORD}
+
+# Alertmanager UI basic auth
+ALERTMANAGER_BASIC_AUTH_USER=admin
+ALERTMANAGER_BASIC_AUTH_HASH=${ALERTMANAGER_BASIC_AUTH_HASH}
 EOF
 chmod 600 "${COMPOSE_DIR}/../secrets.env"
 success "Secrets written to ${COMPOSE_DIR}/../secrets.env"
@@ -262,15 +299,20 @@ echo -e "    URL:         https://${FLEET_DOMAIN}"
 echo -e "    Username:    admin"
 echo -e "    Password:    ${OPERATOR_PASSWORD}"
 echo ""
-echo -e "  ${YLW}Grafana credentials:${NC}"
+echo -e "  ${YLW}Grafana:${NC}"
 echo -e "    URL:         https://grafana.${FLEET_DOMAIN}"
-echo -e "    Username:    admin"
-echo -e "    Password:    ${GRAFANA_ADMIN_PASSWORD}"
+echo -e "    Login:       Automatic via FleetBits SSO — no separate Grafana password needed"
+echo -e "    Admin pw:    ${GRAFANA_ADMIN_PASSWORD}  (stored in secrets.env, used internally)"
 echo ""
 echo -e "  ${YLW}Semaphore credentials:${NC}"
 echo -e "    URL:         https://semaphore.${FLEET_DOMAIN}"
 echo -e "    Username:    admin"
-echo -e "    Password:    ${GRAFANA_ADMIN_PASSWORD}  (same as Grafana admin)"
+echo -e "    Password:    ${SEMAPHORE_ADMIN_PASSWORD}"
+echo ""
+echo -e "  ${YLW}Alertmanager UI:${NC}"
+echo -e "    URL:         https://${FLEET_DOMAIN}/alertmanager"
+echo -e "    Username:    admin"
+echo -e "    Password:    ${ALERTMANAGER_PASSWORD}"
 echo ""
 echo -e "  ${YLW}Aptly repo (public key for apt clients):${NC}"
 echo -e "    https://repo.${FLEET_DOMAIN}/fleetbits.asc"
@@ -304,13 +346,18 @@ Fleet UI
 
 Grafana
   URL:      https://grafana.${FLEET_DOMAIN}
-  Username: admin
-  Password: ${GRAFANA_ADMIN_PASSWORD}
+  Login:    Automatic via FleetBits SSO (no separate Grafana login needed)
+  Admin pw: ${GRAFANA_ADMIN_PASSWORD}  (stored in secrets.env, used internally only)
 
 Semaphore
   URL:      https://semaphore.${FLEET_DOMAIN}
   Username: admin
-  Password: ${GRAFANA_ADMIN_PASSWORD}
+    Password: ${SEMAPHORE_ADMIN_PASSWORD}
+
+Alertmanager
+  URL:      https://${FLEET_DOMAIN}/alertmanager
+  Username: admin
+  Password: ${ALERTMANAGER_PASSWORD}
 
 Root (SSH / console fallback)
   Username: root
@@ -340,7 +387,7 @@ if [[ "${ENROLL_VPS,,}" == "y" ]]; then
     if [ -d "${INSTALL_DIR}/FleetBits-agent" ]; then
         git -C "${INSTALL_DIR}/FleetBits-agent" pull --ff-only
     else
-        git clone https://github.com/NaejEL/FleetBits-agent.git "${INSTALL_DIR}/FleetBits-agent"
+        git clone "https://github.com/${GITHUB_OWNER}/FleetBits-agent.git" "${INSTALL_DIR}/FleetBits-agent"
     fi
     success "FleetBits-agent cloned."
 
