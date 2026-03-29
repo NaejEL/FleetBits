@@ -39,6 +39,8 @@ def _login_required(f):
 def api_proxy_sites():
     try:
         return jsonify(api.get_sites())
+    except Unauthorized:
+        raise
     except ApiError as exc:
         return jsonify({"detail": exc.detail}), exc.status_code
 
@@ -49,6 +51,8 @@ def api_proxy_zones():
     site_id = request.args.get("site_id", "").strip() or None
     try:
         return jsonify(api.get_zones(site_id=site_id))
+    except Unauthorized:
+        raise
     except ApiError as exc:
         return jsonify({"detail": exc.detail}), exc.status_code
 
@@ -60,6 +64,8 @@ def api_proxy_devices():
     site_id = request.args.get("site_id", "").strip() or None
     try:
         return jsonify(api.get_devices(zone_id=zone_id, site_id=site_id))
+    except Unauthorized:
+        raise
     except ApiError as exc:
         return jsonify({"detail": exc.detail}), exc.status_code
 

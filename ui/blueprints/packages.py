@@ -2,7 +2,7 @@
 
 from functools import wraps
 
-from flask import Blueprint, flash, redirect, render_template, session, url_for, request
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 
 import api_client as api
 from api_client import Unauthorized, ApiError
@@ -162,6 +162,7 @@ def packages_upload():
         distribution = request.form.get("distribution", "").strip() or None
         architecture = request.form.get("architecture", "").strip() or None
         is_overwrite = request.form.get("is_overwrite") == "on"
+        max_upload_bytes = current_app.config.get("MAX_CONTENT_LENGTH")
 
         uploaded = request.files.get("deb_file")
         if not uploaded or not uploaded.filename:
@@ -172,10 +173,19 @@ def packages_upload():
             flash("Only .deb files are supported", "error")
             return render_template("packages_upload.html", repos=repo_names, upload_result=None)
 
+        if uploaded.content_length and max_upload_bytes and uploaded.content_length > max_upload_bytes:
+            flash("Uploaded file is too large", "error")
+            return render_template("packages_upload.html", repos=repo_names, upload_result=None)
+
         try:
+            file_bytes = uploaded.read((max_upload_bytes + 1) if max_upload_bytes else -1)
+            if max_upload_bytes and len(file_bytes) > max_upload_bytes:
+                flash("Uploaded file is too large", "error")
+                return render_template("packages_upload.html", repos=repo_names, upload_result=None)
+
             upload_result = api.upload_package_file(
                 file_name=uploaded.filename,
-                file_bytes=uploaded.read(),
+                file_bytes=file_bytes,
                 repo=repo,
                 distribution=distribution,
                 architecture=architecture,

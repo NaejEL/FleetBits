@@ -53,7 +53,7 @@
     </div>
 
     <div style="margin-top:1rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-      <form method="post" action="{{ url_for('packages.packages_promotion_execute') }}" onsubmit="return confirm('Promote packages from ' + '{{ plan.source_repo }}' + ' to ' + '{{ plan.target_repo }}' + '?');" style="display:flex;gap:0.75rem;align-items:center;">
+      <form method="post" action="{{ url_for('packages.packages_promotion_execute') }}" onsubmit="return confirm('Promote packages from ' + {{ plan.source_repo|tojson }} + ' to ' + {{ plan.target_repo|tojson }} + '?');" style="display:flex;gap:0.75rem;align-items:center;">
         <input type="hidden" name="source_repo" value="{{ plan.source_repo }}">
         <input type="hidden" name="target_repo" value="{{ plan.target_repo }}">
         <label style="display:flex;align-items:center;gap:0.35rem;">
