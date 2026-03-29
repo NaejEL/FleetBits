@@ -50,6 +50,9 @@ jobs:
           SEMAPHORE_API_KEY=semaphore-ci-api-key
           FLEET_JWT_SECRET=fleet-ci-jwt-secret-please-change
           FLEET_UI_SECRET_KEY=fleet-ui-ci-secret-key
+          GRAFANA_PROXY_SECRET=grafana-proxy-ci-secret
+          FLEETBITS_API_IMAGE=fleetbits-api:ci
+          FLEETBITS_UI_IMAGE=fleetbits-ui:ci
           SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY=semaphore-ci-access-key-encryption
           SEMAPHORE_ADMIN_PASSWORD=semaphore-ci-admin-password
           FLEET_API_INTERNAL_URL=http://fleet-api:8000
@@ -150,6 +153,12 @@ jobs:
               command: caddy run --config /etc/caddy/Caddyfile.ci --adapter caddyfile
               environment:
                 FLEET_DOMAIN: "localhost"
+
+            fleet-ui:
+              image: fleetbits-ui:ci
+              build:
+                context: ../../FleetBits-ui
+                dockerfile: Dockerfile
 
             fleet-api:
               build:
