@@ -170,10 +170,13 @@ if [[ "${API_HOST}" == api.* ]]; then
   AUTH_FILE="${AUTH_DIR}/fleetbits-repo.conf"
 
   mkdir -p "${AUTH_DIR}"
+  REPO_BASIC_TOKEN=$(grep -m1 '^REPO_BASIC_TOKEN=' "${IDENTITY_FILE}" | cut -d'=' -f2-)
+  [ -n "${REPO_BASIC_TOKEN:-}" ] || fail "REPO_BASIC_TOKEN missing from ${IDENTITY_FILE}; cannot configure APT repo auth"
+
   cat > "${AUTH_FILE}" <<EOF
 machine ${REPO_HOST}
 login ${DEVICE_ID}
-password ${FLEET_AGENT_TOKEN}
+password ${REPO_BASIC_TOKEN}
 EOF
   chmod 600 "${AUTH_FILE}"
   log "APT repo auth configured for ${REPO_HOST}"
