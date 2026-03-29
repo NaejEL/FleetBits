@@ -115,7 +115,13 @@ if ! command -v ssh-keygen >/dev/null 2>&1; then
   fail "ssh-keygen is required to create the repository authorization key"
 fi
 
-if [ ! -f "${REPO_KEY_PATH}" ] || [ ! -f "${REPO_PUB_PATH}" ]; then
+if [ -f "${REPO_KEY_PATH}" ] && [ ! -f "${REPO_PUB_PATH}" ]; then
+  log "Private key exists but public key missing — regenerating public key"
+  ssh-keygen -y -f "${REPO_KEY_PATH}" > "${REPO_PUB_PATH}" \
+    || fail "Failed to regenerate repository public key"
+elif [ ! -f "${REPO_KEY_PATH}" ] && [ -f "${REPO_PUB_PATH}" ]; then
+  fail "Repository public key exists without private key; remove both files or reprovision"
+elif [ ! -f "${REPO_KEY_PATH}" ] && [ ! -f "${REPO_PUB_PATH}" ]; then
   log "Generating repository authorization keypair"
   mkdir -p "${REPO_KEY_DIR}"
   ssh-keygen -q -t ed25519 -N "" -C "fleet-repo:${DEVICE_ID}" -f "${REPO_KEY_PATH}" \
@@ -129,8 +135,7 @@ if ! grep -q '^FLEET_AGENT_TOKEN=' "${IDENTITY_FILE}"; then
   fail "FLEET_AGENT_TOKEN missing from ${IDENTITY_FILE}; cannot register repository key"
 fi
 
-# shellcheck source=/dev/null
-source "${IDENTITY_FILE}"
+FLEET_AGENT_TOKEN=$(grep -m1 '^FLEET_AGENT_TOKEN=' "${IDENTITY_FILE}" | cut -d'=' -f2-)
 
 [ -n "${FLEET_AGENT_TOKEN:-}" ] || fail "FLEET_AGENT_TOKEN is empty in ${IDENTITY_FILE}"
 
@@ -139,7 +144,7 @@ FINGERPRINT=$(ssh-keygen -lf "${REPO_PUB_PATH}" | awk '{print $2}')
 KEY_PAYLOAD=$(jq -n --arg public_key "${PUBKEY}" --arg key_fingerprint "${FINGERPRINT}" \
   '{public_key: $public_key, key_fingerprint: $key_fingerprint}')
 
-KEY_STATUS=$(curl -sf \
+KEY_STATUS=$(curl -sS \
   --max-time 20 \
   --retry 3 \
   --retry-delay 2 \
@@ -148,7 +153,7 @@ KEY_STATUS=$(curl -sf \
   -H "Authorization: Bearer ${FLEET_AGENT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "${KEY_PAYLOAD}" \
-  -o /tmp/fleet-repo-key-register.out) \
+  -o /dev/null) \
   || fail "Repository key registration request failed"
 
 if [ "${KEY_STATUS}" != "200" ]; then

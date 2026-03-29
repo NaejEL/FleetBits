@@ -54,11 +54,13 @@ sed -i \
 
 # ── Optional components: MQTT exporter ───────────────────────────────────────
 if [ "${ENABLE_MQTT_EXPORTER:-false}" = "true" ]; then
+  MQTT_USERNAME_ESC=$(printf '%s' "${MQTT_USERNAME:-}" | sed -e 's/[|&\\]/\\&/g')
+  MQTT_PASSWORD_ESC=$(printf '%s' "${MQTT_PASSWORD:-}" | sed -e 's/[|&\\]/\\&/g')
   sed -i \
     -e "s|MQTT_BROKER_HOST_PLACEHOLDER|${MQTT_BROKER_HOST:-localhost}|g" \
     -e "s|MQTT_BROKER_PORT_PLACEHOLDER|${MQTT_BROKER_PORT:-1883}|g" \
-    -e "s|MQTT_USERNAME_PLACEHOLDER|${MQTT_USERNAME:-}|g" \
-    -e "s|MQTT_PASSWORD_PLACEHOLDER|${MQTT_PASSWORD:-}|g" \
+    -e "s|MQTT_USERNAME_PLACEHOLDER|${MQTT_USERNAME_ESC}|g" \
+    -e "s|MQTT_PASSWORD_PLACEHOLDER|${MQTT_PASSWORD_ESC}|g" \
     "${OUTPUT_FILE}.tmp"
 else
   # Strip the mqtt_exporter block from the config

@@ -151,11 +151,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Normalize image owner
+        shell: bash
+        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/fleetbits-agent
+          images: ghcr.io/${{ env.IMAGE_OWNER }}/fleetbits-agent
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
