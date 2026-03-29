@@ -63,6 +63,8 @@ jobs:
           FLASK_DEBUG=false
           TELEMETRY_AUTH_REQUIRED=true
           TELEMETRY_PROXY_TIMEOUT_SECONDS=15
+          MQTT_BROKER_USERNAME=ci-mqtt-user
+          MQTT_BROKER_PASSWORD=ci-mqtt-password
           ALERTMANAGER_BASIC_AUTH_USER=admin
           # Alertmanager is not started in CI — use a placeholder to avoid Docker Compose $-interpolation warnings
           ALERTMANAGER_BASIC_AUTH_HASH=ci-placeholder-alertmanager-not-started
