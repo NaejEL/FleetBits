@@ -498,12 +498,17 @@ async def issue_device_token(
     # Generate new device token
     new_token = generate_device_token()
     device.device_token_hash = hash_token(new_token)
-    
-    # Generate per-device MQTT credentials
-    mqtt_username, mqtt_password = generate_mqtt_credentials(device_id)
-    device.mqtt_username = mqtt_username
-    device.mqtt_password_hash = hash_mqtt_password(mqtt_password)
-    device.mqtt_credentials_issued_at = datetime.now(UTC)
+
+    # Generate per-device MQTT credentials only if not already set.
+    # This avoids unintentionally rotating broker credentials on token re-issue.
+    if device.mqtt_username and device.mqtt_password_hash:
+        mqtt_username = device.mqtt_username
+        mqtt_password = ""
+    else:
+        mqtt_username, mqtt_password = generate_mqtt_credentials(device_id)
+        device.mqtt_username = mqtt_username
+        device.mqtt_password_hash = hash_mqtt_password(mqtt_password)
+        device.mqtt_credentials_issued_at = datetime.now(UTC)
 
     await write_audit_event(
         db,

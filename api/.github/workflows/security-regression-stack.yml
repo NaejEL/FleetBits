@@ -62,7 +62,7 @@ jobs:
           ALERTMANAGER_BASIC_AUTH_USER=admin
           ALERTMANAGER_BASIC_AUTH_HASH=$2a$14$XsyaN7jCTohY84F5w2B1AepJyI072QtdgQXl3k5iADG7n2AFDzy83
           OPERATOR_USERNAME=admin
-          OPERATOR_PASSWORD=admin
+          OPERATOR_PASSWORD=admin-ci-password
           VPS_DEVICE_TOKEN=ci-vps-device-token
           REPO_KEY_SYNC_INTERVAL_SECONDS=30
           EOF

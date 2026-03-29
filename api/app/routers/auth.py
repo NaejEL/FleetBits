@@ -17,7 +17,7 @@ import uuid
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +55,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def grafana_verify(
     request: Request,
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> Response:
     """Caddy forward_auth endpoint for Grafana Auth Proxy.
 
     Caddy calls this before forwarding any request to Grafana.
@@ -103,7 +103,6 @@ async def grafana_verify(
         if iat_dt < user.token_valid_after:
             raise HTTPException(status_code=401, detail="Token invalidated")
 
-    from fastapi import Response
     headers = {
         "X-WEBAUTH-USER": user.username,
         "X-WEBAUTH-EMAIL": user.email or f"{user.username}@fleetbits.local",

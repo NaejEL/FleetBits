@@ -135,8 +135,6 @@ def generate_mqtt_credentials(device_id: str) -> tuple[str, str]:
         (mqtt_username, mqtt_password_plaintext)
         Store hash_mqtt_password(mqtt_password_plaintext) in DB.
     """
-    from app.services.passwords import hash_password
-    
     # Username: device_<device_id>
     mqtt_username = f"device_{device_id}"
     # Password: random 24-byte URL-safe string
