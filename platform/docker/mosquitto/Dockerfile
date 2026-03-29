@@ -4,6 +4,9 @@ FROM eclipse-mosquitto:2
 RUN mkdir -p /mosquitto/data /mosquitto/log && \
     chown -R mosquitto:mosquitto /mosquitto
 
+# Runtime dependencies used by ACL sync entrypoint
+RUN apk add --no-cache curl python3
+
 COPY mosquitto.conf /mosquitto/config/mosquitto.conf
 COPY docker-entrypoint.sh /usr/local/bin/fleetbits-mosquitto-entrypoint.sh
 

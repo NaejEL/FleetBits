@@ -11,7 +11,7 @@ ExecStart={{ systemd_exporter_install_dir }}/systemd_exporter \
 
 Restart=on-failure
 RestartSec=5s
-NoNewPrivileges=no
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=multi-user.target

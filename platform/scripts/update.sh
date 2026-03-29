@@ -86,6 +86,7 @@ fi
 
 require_cmd git
 require_cmd docker
+require_cmd openssl
 
 COMPOSE=(docker compose --env-file "${SECRETS_FILE}")
 

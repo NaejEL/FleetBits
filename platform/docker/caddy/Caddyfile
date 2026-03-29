@@ -100,5 +100,9 @@ headscale.{$FLEET_DOMAIN} {
 # Legacy host kept for compatibility; canonical operator URL is now
 # https://{$FLEET_DOMAIN}/semaphore routed through the main Fleet portal.
 semaphore.{$FLEET_DOMAIN} {
-    reverse_proxy semaphore:3000
+    @wireguard remote_ip 100.64.0.0/10
+    handle @wireguard {
+        reverse_proxy semaphore:3000
+    }
+    respond "Access restricted to WireGuard mesh" 403
 }

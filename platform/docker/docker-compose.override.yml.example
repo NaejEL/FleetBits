@@ -30,8 +30,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SERVER_ROOT_URL: "http://localhost:3000"
-      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      GF_SERVER_ROOT_URL: "http://localhost/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes: !reset
       - grafana_data:/var/lib/grafana
 
@@ -80,6 +80,6 @@ services:
       - "5000:5000"
     environment:
       FLEET_API_URL: "http://fleet-api:8000"
-      GRAFANA_URL: "http://localhost:3000"
+      GRAFANA_URL: "http://localhost/grafana"
       SEMAPHORE_URL: "http://localhost/semaphore"
       FLEET_ENV: "development"

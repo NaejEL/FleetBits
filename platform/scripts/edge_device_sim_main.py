@@ -38,6 +38,9 @@ STATE: dict[str, object] = {
     "zone_id": ZONE_ID,
     "device_id": DEVICE_ID,
     "bootstrapped": False,
+    "bootstrap_in_progress": True,
+    "bootstrap_attempt": 0,
+    "bootstrap_failed": False,
     "admin_login": False,
     "device_token_issued": False,
     "repo_key_registered": False,
@@ -48,9 +51,27 @@ STATE: dict[str, object] = {
     "last_update": None,
 }
 
+STATE_LOCK = threading.Lock()
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _update_state(**values: object) -> None:
+    with STATE_LOCK:
+        STATE.update(values)
+        STATE["last_update"] = _now_iso()
+
+
+def _get_state(key: str) -> object | None:
+    with STATE_LOCK:
+        return STATE.get(key)
+
+
+def _snapshot_state() -> dict[str, object]:
+    with STATE_LOCK:
+        return dict(STATE)
 
 
 def _request(
@@ -86,6 +107,12 @@ def _request(
         except json.JSONDecodeError:
             payload = raw
         return exc.code, payload, dict(exc.headers or {})
+    except urllib.error.URLError as exc:
+        # Treat transport-level errors as an HTTP-like failure so callers can
+        # decide whether the request is fatal (_ensure_ok) or informational.
+        # This keeps bootstrap deterministic in CI when optional probes (e.g.
+        # caddy package path checks) hit transient DNS/startup races.
+        return 599, {"detail": str(exc.reason)}, {}
 
 
 def _ensure_ok(status: int, allowed: tuple[int, ...], action: str) -> None:
@@ -103,7 +130,7 @@ def _bootstrap_once() -> None:
     _ensure_ok(st, (200,), "admin login")
     assert isinstance(body, dict) and "access_token" in body
     admin_token = body["access_token"]
-    STATE["admin_login"] = True
+    _update_state(admin_login=True)
 
     st, _, _ = _request(
         API_URL,
@@ -168,8 +195,7 @@ def _bootstrap_once() -> None:
     _ensure_ok(st, (200,), "issue device token")
     assert isinstance(body, dict) and "device_token" in body
     device_token = body["device_token"]
-    STATE["device_token_issued"] = True
-    STATE["device_token"] = device_token
+    _update_state(device_token_issued=True, device_token=device_token)
 
     pubkey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCdummy edge-sim@test"
     st, _, _ = _request(
@@ -180,8 +206,7 @@ def _bootstrap_once() -> None:
         data={"public_key": pubkey, "key_fingerprint": "SHA256:edge-sim"},
     )
     _ensure_ok(st, (200, 201), "register repo key")
-    STATE["repo_key_registered"] = True
-    STATE["repo_public_key"] = pubkey
+    _update_state(repo_key_registered=True, repo_public_key=pubkey)
 
     st, _, _ = _request(
         API_URL,
@@ -195,7 +220,7 @@ def _bootstrap_once() -> None:
         },
     )
     _ensure_ok(st, (204,), "heartbeat")
-    STATE["heartbeat_ok"] = True
+    _update_state(heartbeat_ok=True)
 
     st, body, _ = _request(
         API_URL,
@@ -203,8 +228,7 @@ def _bootstrap_once() -> None:
         method="GET",
         token=device_token,
     )
-    STATE["repo_authorize_status"] = st
-    STATE["repo_authorize_body"] = body
+    _update_state(repo_authorize_status=st, repo_authorize_body=body)
 
     st, _, _ = _request(
         CADDY_URL,
@@ -212,15 +236,13 @@ def _bootstrap_once() -> None:
         method="GET",
         token=device_token,
     )
-    STATE["repo_pull_status"] = st
-
-    STATE["bootstrapped"] = True
+    _update_state(repo_pull_status=st)
 
 
 def _heartbeat_loop() -> None:
     while True:
         try:
-            token = STATE.get("device_token")
+            token = _get_state("device_token")
             if token:
                 st, _, _ = _request(
                     API_URL,
@@ -229,13 +251,29 @@ def _heartbeat_loop() -> None:
                     token=str(token),
                     data={"agent_version": "edge-sim-1.0", "service_states": {"fleet-agent": "active"}},
                 )
-                STATE["heartbeat_status"] = st
-                STATE["heartbeat_ok"] = st == 204
-            STATE["last_update"] = _now_iso()
+                _update_state(heartbeat_status=st, heartbeat_ok=(st == 204))
         except Exception as exc:
-            STATE["last_error"] = f"heartbeat_loop: {exc}"
-            STATE["last_update"] = _now_iso()
+            _update_state(last_error=f"heartbeat_loop: {exc}")
         time.sleep(30)
+
+
+def _bootstrap_loop() -> None:
+    for attempt in range(1, 61):
+        try:
+            _update_state(bootstrap_attempt=attempt, bootstrap_in_progress=True, bootstrap_failed=False)
+            _bootstrap_once()
+            _update_state(bootstrapped=True, bootstrap_in_progress=False, bootstrap_failed=False, last_error=None)
+            return
+        except Exception as exc:
+            _update_state(
+                bootstrap_attempt=attempt,
+                bootstrap_in_progress=True,
+                bootstrap_failed=False,
+                last_error=f"bootstrap attempt {attempt}: {exc}",
+            )
+            time.sleep(2)
+
+    _update_state(bootstrap_in_progress=False, bootstrap_failed=True)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -244,7 +282,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/health", "/state"):
-            payload = json.dumps(STATE).encode()
+            payload = json.dumps(_snapshot_state()).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -256,17 +294,11 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    for attempt in range(1, 61):
-        try:
-            _bootstrap_once()
-            break
-        except Exception as exc:
-            STATE["last_error"] = f"bootstrap attempt {attempt}: {exc}"
-            STATE["last_update"] = _now_iso()
-            time.sleep(2)
+    bootstrap_thread = threading.Thread(target=_bootstrap_loop, daemon=True)
+    bootstrap_thread.start()
 
-    t = threading.Thread(target=_heartbeat_loop, daemon=True)
-    t.start()
+    heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+    heartbeat_thread.start()
 
     server = ThreadingHTTPServer(("0.0.0.0", 18080), _Handler)
     server.serve_forever()
