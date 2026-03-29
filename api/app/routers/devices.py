@@ -101,7 +101,7 @@ async def provision_device(
     Returns all environment variables needed for /etc/fleet/device-identity.conf,
     including MQTT credentials generated at provisioning time.
     """
-    from jose import JWTError
+    from jwt.exceptions import PyJWTError as JWTError
     from app.services.token import decode_token
 
     raw_token = credentials.credentials
@@ -457,7 +457,7 @@ async def issue_device_token(
     - Provision JWT: single-use, device_id must be in allowed_device_ids.
     - Operator JWT: idempotent, can re-issue at any time.
     """
-    from jose import JWTError
+    from jwt.exceptions import PyJWTError as JWTError
     from app.services.token import decode_token
 
     raw_token = credentials.credentials
