@@ -84,4 +84,4 @@ def inject_globals():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=_env_flag("FLASK_DEBUG", default=False))
+    app.run(host="0.0.0.0", port=5000, debug=_env_flag("FLASK_DEBUG", default=False))  # nosec B104 — intentional bind-all for containerized deployment
