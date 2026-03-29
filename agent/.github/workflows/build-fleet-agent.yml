@@ -24,7 +24,7 @@ jobs:
       - name: Install fpm
         run: |
           sudo apt-get install -y ruby ruby-dev build-essential
-          gem install fpm --no-document
+          sudo gem install fpm --no-document
 
       - name: Install zip (for Alloy download)
         run: sudo apt-get install -y unzip
