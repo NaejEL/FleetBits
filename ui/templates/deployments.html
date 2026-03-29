@@ -96,7 +96,7 @@
           {% if dep.status in ('pending', 'scheduled') %}
           <form method="post" action="{{ url_for('deployments.trigger', deployment_id=dep.deployment_id) }}"
                 style="display:inline"
-                onsubmit="return confirm('Trigger deployment {{ dep.deployment_id }}?')">
+                onsubmit="return confirm({{ ('Trigger deployment %s?' % dep.deployment_id) | tojson }})">
             <button type="submit" class="btn btn-primary btn-sm">
               <svg class="icon"><use href="#icon-arrow-up"/></svg>
               Trigger {{ dep.rollout_mode | e }}
@@ -121,7 +121,7 @@
           {% if dep.status in ('success', 'failed') %}
           <form method="post" action="{{ url_for('deployments.rollback', deployment_id=dep.deployment_id) }}"
                 style="display:inline"
-                onsubmit="return confirm('Roll back {{ dep.deployment_id }}?')">
+                onsubmit="return confirm({{ ('Roll back %s?' % dep.deployment_id) | tojson }})">
             <button type="submit" class="btn btn-danger btn-sm">
               <svg class="icon"><use href="#icon-arrows-path"/></svg>
               Rollback
@@ -220,7 +220,7 @@
                 {% set next_ring = 'ring-1' if dep.rollout_mode == 'ring-0' else 'ring-2' %}
               <form method="post" action="{{ url_for('deployments.promote', deployment_id=dep.deployment_id) }}"
                     style="display:inline"
-                    onsubmit="return confirm('Promote to {{ next_ring }}?')">
+                    onsubmit="return confirm({{ ('Promote to %s?' % next_ring) | tojson }})">
                 <button type="submit" class="btn btn-ghost btn-xs">Promote → {{ next_ring }}</button>
               </form>
               {% endif %}
