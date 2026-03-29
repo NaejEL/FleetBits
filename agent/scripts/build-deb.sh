@@ -126,7 +126,7 @@ for DEB_ARCH in "${BUILD_ARCHES[@]}"; do
     --package     "${DIST_DIR}/fleet-agent_${VERSION}_${DEB_ARCH}.deb" \
     --force \
     --chdir       "${REPO_ROOT}" \
-    "${ALLOY_BIN}=/usr/bin/alloy" \
+    "build/alloy-${DEB_ARCH}=/usr/bin/alloy" \
     "etc/fleet/=/etc/fleet/" \
     "usr/lib/fleet-agent/=/usr/lib/fleet-agent/" \
     "lib/systemd/system/fleet-agent.service=/lib/systemd/system/fleet-agent.service" \
