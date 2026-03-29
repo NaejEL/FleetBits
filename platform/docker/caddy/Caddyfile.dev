@@ -6,8 +6,109 @@
 # instead of the production Caddyfile.
 
 :80 {
+    # Deny direct FastAPI Prometheus instrumentation exposure.
+    handle /metrics {
+        respond 403
+    }
+
+    # Semaphore UI (proxied via path to mirror production UX)
+    handle_path /semaphore* {
+        reverse_proxy semaphore:3000
+    }
+
+    # Alertmanager UI (same path as production, with basic auth)
+    handle_path /alertmanager* {
+        basic_auth {
+            {$ALERTMANAGER_BASIC_AUTH_USER} {$ALERTMANAGER_BASIC_AUTH_HASH}
+        }
+        reverse_proxy alertmanager:9093
+    }
+
+    # Telemetry ingest paths (dev parity with production security model)
+    # Edge agents still post to Prometheus/Loki-compatible paths, but auth is
+    # enforced by fleet-api ingress endpoints.
+    handle /api/v1/write {
+        rewrite * /api/v1/telemetry/metrics/write
+        reverse_proxy fleet-api:8000
+    }
+
+    handle /loki/api/v1/push {
+        rewrite * /api/v1/telemetry/logs/push
+        reverse_proxy fleet-api:8000
+    }
+
+    # Dev-path parity for repo policy checks (equivalent to repo.<domain> rules)
+    # Aptly admin paths must never be exposed through Caddy.
+    handle /api/repos* {
+        respond 403
+    }
+    handle /repos* {
+        respond 403
+    }
+    handle /snapshots* {
+        respond 403
+    }
+    handle /publish* {
+        respond 403
+    }
+
+    # Repository package paths must pass forward-auth first.
+    handle /pool/* {
+        forward_auth fleet-api:8000 {
+            uri /api/v1/packages/repo/authorize
+            copy_headers X-Repo-Device-Id X-Repo-Site-Id
+        }
+        reverse_proxy aptly-api:8080
+    }
+    handle /dists/* {
+        forward_auth fleet-api:8000 {
+            uri /api/v1/packages/repo/authorize
+            copy_headers X-Repo-Device-Id X-Repo-Site-Id
+        }
+        reverse_proxy aptly-api:8080
+    }
+
+    # Grafana SSO — embed panels via /grafana/* path so the fleet_access cookie
+    # on localhost is sent (no subdomain needed in dev).
+    # In production this is served from grafana.{FLEET_DOMAIN} subdomain instead.
+    handle /grafana/* {
+        forward_auth fleet-api:8000 {
+            uri /api/v1/auth/grafana-verify
+            copy_headers X-WEBAUTH-USER X-WEBAUTH-EMAIL X-WEBAUTH-NAME X-WEBAUTH-GROUPS
+            header_up X-Fleet-Proxy-Secret {$GRAFANA_PROXY_SECRET}
+        }
+        uri strip_prefix /grafana
+        reverse_proxy grafana:3000
+    }
+
     # Fleet UI (primary landing page)
     handle /* {
         reverse_proxy fleet-ui:5000
     }
+}
+
+# Dev parity for repository policy checks.
+# This enables running repository security integration tests locally against
+# the same reverse-proxy control points used in production.
+repo.localhost {
+    @aptly_admin path /api/* /repos/* /snapshots/* /publish/*
+    handle @aptly_admin {
+        respond 403
+    }
+
+    @repo_public_key path /fleetbits.asc
+    handle @repo_public_key {
+        reverse_proxy aptly-api:8080
+    }
+
+    @repo_packages path /pool/* /dists/*
+    handle @repo_packages {
+        forward_auth fleet-api:8000 {
+            uri /api/v1/packages/repo/authorize
+            copy_headers X-Repo-Device-Id X-Repo-Site-Id
+        }
+        reverse_proxy aptly-api:8080
+    }
+
+    respond 403
 }

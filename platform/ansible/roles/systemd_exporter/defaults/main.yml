@@ -1,0 +1,24 @@
+---
+# roles/systemd_exporter/defaults/main.yml
+# Default variable values for the systemd_exporter role.
+
+# Version of prometheus-systemd-exporter to install
+systemd_exporter_version: "0.6.0"
+
+# Architecture string used in the release archive name
+systemd_exporter_arch: "arm64"   # override to amd64 for x86 hosts
+
+# Installation directory for the binary
+systemd_exporter_install_dir: "/usr/local/bin"
+
+# Systemd unit file destination
+systemd_exporter_service_file: "/etc/systemd/system/systemd_exporter.service"
+
+# Bind address — use loopback so only Alloy (local) can scrape it
+systemd_exporter_listen_address: "127.0.0.1:9558"
+
+# Alloy scrape config snippet path — Alloy will pick this up and push rules to Prometheus
+alloy_config_dir: "/etc/fleet/alloy"
+
+# Whether to enable collection of per-unit CPU/memory metrics (requires cgroups v2)
+systemd_exporter_enable_restart_count: true

@@ -1,0 +1,181 @@
+# docker-compose.ci.override.yml — CI/RUNNER ENVIRONMENT
+# 
+# Optimizations for automated security regression testing:
+#   - fleet-api and fleet-ui built from CI checkout sibling paths
+#   - All services on internal network only (no port exposure)
+#   - Plain HTTP Caddy config (no TLS, no cert generation delays)
+#   - Minimal services for security test coverage
+#   - Optimized timeouts and resource allocation for CI runners
+#
+# Applied after base docker-compose.yml in GitHub Actions workflow.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.override.yml up -d
+
+services:
+
+  caddy:
+    # Use dev Caddyfile for plain HTTP (no TLS auto-generation in CI)
+    command: caddy run --config /etc/caddy/Caddyfile.dev --adapter caddyfile
+    environment:
+      FLEET_DOMAIN: "localhost"
+    # No ports exposed in CI
+    ports: []
+
+  prometheus:
+    # Disable metrics retention for CI (test environment)
+    environment:
+      PROMETHEUS_RETENTION: "1h"
+    # No port exposure in CI
+    ports: []
+
+  grafana:
+    # Build Grafana from CI context (minimal image, test credentials)
+    build:
+      context: ./grafana
+      dockerfile: Dockerfile
+    image: fleetbits-grafana:ci
+    environment:
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      # CI-specific: disable analytics, plugins verification
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_INSTALL_PLUGINS: ""
+    # No port exposure in CI
+    ports: []
+    volumes: !reset
+      - grafana_data:/var/lib/grafana
+
+  loki:
+    # Disable retention for CI test runs (shorter lifecycle)
+    command: -config.file=/etc/loki/loki.yml
+    # No port exposure in CI
+    ports: []
+
+  alertmanager:
+    # No port exposure in CI
+    ports: []
+
+  semaphore:
+    # No port exposure in CI (internal only)
+    ports: []
+    environment:
+      SEMAPHORE_DB_DIALECT: "postgres"
+      SEMAPHORE_DB_HOST: "postgresql"
+      SEMAPHORE_DB_PORT: "5432"
+
+  postgresql:
+    # No port exposure in CI (internal only; dev override exposes port 5432)
+    ports: []
+
+  fleet-api:
+    # Build from CI checkout sibling directory (../)
+    build:
+      context: ../../FleetBits-api
+      dockerfile: Dockerfile
+    image: fleetbits-api:ci
+    # No port exposure in CI; accessed only via Caddy and docker compose exec
+    ports: []
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://fleet:${FLEET_DB_PASSWORD}@postgresql:5432/fleet"
+      FLEET_ENV: "test"
+      FLEET_API_URL: "http://localhost:8000"
+      LOG_LEVEL: "info"
+    depends_on:
+      - postgresql
+      - prometheus
+      - loki
+
+  fleet-ui:
+    # Build from CI checkout sibling directory
+    build:
+      context: ../../FleetBits-ui
+      dockerfile: Dockerfile
+    image: fleetbits-ui:ci
+    # No port exposure in CI
+    ports: []
+    environment:
+      FLEET_API_URL: "http://fleet-api:8000"
+      GRAFANA_URL: "http://grafana:3000"
+      SEMAPHORE_URL: "http://localhost/semaphore"
+      FLEET_ENV: "test"
+    depends_on:
+      - fleet-api
+
+  # ─── Optional: Minimal telemetry nodes for e2e testing ───────────────────────
+  mosquitto:
+    # Keep MQTT for device simulator integration
+    ports: []
+
+  mqtt-exporter:
+    # Keep for telemetry export pipeline validation
+    ports: []
+
+  # ─── Skip in CI: These services are not required for security regression ─────
+  headscale:
+    # VPN coordination not needed for CI test suite
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 64M
+
+  node-exporter:
+    # Node metrics not needed; takes time to start
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
+
+  cadvisor:
+    # Container metrics collector not needed for security tests
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 64M
+
+  vps-device:
+    # Virtual device simulator not needed for security regression suite
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
+
+  # ─── Edge Simulator ─────────────────────────────────────────────────────────
+  edge-sim:
+    build:
+      context: ..
+      dockerfile: docker/edge-sim/Dockerfile
+    container_name: fleetbits-edge-sim
+    environment:
+      EDGE_SIM_API_URL: "http://fleet-api:8000"
+      EDGE_SIM_CADDY_URL: "http://caddy:80"
+      EDGE_SIM_OPERATOR_PASSWORD: "${OPERATOR_PASSWORD}"
+      EDGE_SIM_DEVICE_ID: "ci-device-001"
+      EDGE_SIM_SITE_ID: "ci-site"
+      EDGE_SIM_ZONE_ID: "ci-zone"
+    # No external ports; internal health check via /state endpoint
+    expose:
+      - "18080"
+    networks:
+      - fleet_net
+    depends_on:
+      - fleet-api
+    restart: on-failure
+    # Keep logs brief in CI
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  headscale_data:
+
+networks:
+  fleet_net:
+    driver: bridge

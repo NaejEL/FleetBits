@@ -16,7 +16,7 @@ services:
   headscale:
     build:
       context: ./headscale
-    container_name: headscale
+    container_name: fleetbits-headscale
     volumes:
       - headscale_data:/var/lib/headscale
     command: serve
@@ -28,7 +28,7 @@ services:
   prometheus:
     build:
       context: ./prometheus
-    container_name: prometheus
+    container_name: fleetbits-prometheus
     user: "0"
     volumes:
       - prometheus_data:/prometheus
@@ -45,7 +45,7 @@ services:
   loki:
     build:
       context: ./loki
-    container_name: loki
+    container_name: fleetbits-loki
     user: "0"
     volumes:
       - loki_data:/loki
@@ -58,7 +58,7 @@ services:
   alertmanager:
     build:
       context: ./alertmanager
-    container_name: alertmanager
+    container_name: fleetbits-alertmanager
     volumes:
       - alertmanager_data:/alertmanager
     command:
@@ -71,15 +71,23 @@ services:
   # ─── Dashboards + alerting UI ───────────────────────────────────────────────
   grafana:
     image: grafana/grafana-oss:11.1.0
-    container_name: grafana
+    container_name: fleetbits-grafana
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     environment:
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      # Auth Proxy (Caddy forward_auth SSO) — users auto-login via FleetBits session.
+      # GF_AUTH_ANONYMOUS_ENABLED stays false: anonymous access is never needed.
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: "X-WEBAUTH-USER"
+      GF_AUTH_PROXY_HEADERS: "Email:X-WEBAUTH-EMAIL Name:X-WEBAUTH-NAME Groups:X-WEBAUTH-GROUPS"
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
+      GF_AUTH_PROXY_SYNC_TTL: "60"
+      GF_AUTH_PROXY_WHITELIST: ""
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_SECURITY_ALLOW_EMBEDDING: "true"
       GF_SERVER_ROOT_URL: "https://grafana.${FLEET_DOMAIN}"
     depends_on:
@@ -92,7 +100,7 @@ services:
   # ─── Ansible job runner ─────────────────────────────────────────────────────
   semaphore:
     image: semaphoreui/semaphore:v2.10.22
-    container_name: semaphore
+    container_name: fleetbits-semaphore
     # Proxmox LXC can enforce restrictive FS perms in some paths; run as root
     # to avoid startup loops when writing generated config files.
     user: "0"
@@ -105,11 +113,11 @@ services:
       SEMAPHORE_DB_PASS: "${SEMAPHORE_DB_PASSWORD}"
       # /tmp/semaphore is not writable in Proxmox LXC; use the named volume path instead
       SEMAPHORE_PLAYBOOK_PATH: /var/lib/semaphore
-      SEMAPHORE_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      SEMAPHORE_ADMIN_PASSWORD: "${SEMAPHORE_ADMIN_PASSWORD:?Set SEMAPHORE_ADMIN_PASSWORD in secrets.env}"
       SEMAPHORE_ADMIN_NAME: admin
       SEMAPHORE_ADMIN_EMAIL: admin@fleetbits.local
       SEMAPHORE_ADMIN: admin
-      SEMAPHORE_ACCESS_KEY_ENCRYPTION: "${FLEET_JWT_SECRET}"
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: "${SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY:?Set SEMAPHORE_ACCESS_KEY_ENCRYPTION_KEY in secrets.env}"
     volumes:
       - semaphore_data:/var/lib/semaphore
     depends_on:
@@ -121,8 +129,8 @@ services:
 
   # ─── Fleet inventory + deployment API ───────────────────────────────────────
   fleet-api:
-    image: ghcr.io/naejel/fleetbits-api:latest
-    container_name: fleet-api
+    image: "${FLEETBITS_API_IMAGE:?Set FLEETBITS_API_IMAGE in secrets.env}"
+    container_name: fleetbits-api
     environment:
       DATABASE_URL: "postgresql+asyncpg://fleet:${FLEET_DB_PASSWORD}@postgresql:5432/fleet"
       SEMAPHORE_URL: "http://semaphore:3000"
@@ -131,7 +139,14 @@ services:
       PROMETHEUS_URL: "http://prometheus:9090"
       LOKI_URL: "http://loki:3100"
       ALERTMANAGER_URL: "http://alertmanager:9093"
+      TELEMETRY_AUTH_REQUIRED: "${TELEMETRY_AUTH_REQUIRED:-true}"
+      TELEMETRY_PROXY_TIMEOUT_SECONDS: "${TELEMETRY_PROXY_TIMEOUT_SECONDS:-15}"
       FLEET_ENV: "${FLEET_ENV:-production}"
+      ALLOW_ALL_ORIGINS: "${ALLOW_ALL_ORIGINS:-false}"
+      # Grafana SSO provisioning
+      GRAFANA_INTERNAL_URL: "${GRAFANA_INTERNAL_URL:-http://grafana:3000}"
+      GRAFANA_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      GRAFANA_PROXY_SECRET: "${GRAFANA_PROXY_SECRET:?Set GRAFANA_PROXY_SECRET in secrets.env}"
       FLEET_API_URL: "https://api.${FLEET_DOMAIN}"
       OPERATOR_USERNAME: "${OPERATOR_USERNAME:-admin}"
       OPERATOR_PASSWORD: "${OPERATOR_PASSWORD}"
@@ -144,16 +159,19 @@ services:
 
   # ─── Operator web UI ────────────────────────────────────────────────────────
   fleet-ui:
-    image: ghcr.io/naejel/fleetbits-ui:latest
-    container_name: fleet-ui
+    image: "${FLEETBITS_UI_IMAGE:?Set FLEETBITS_UI_IMAGE in secrets.env}"
+    container_name: fleetbits-ui
     environment:
-      SECRET_KEY: "${FLEET_JWT_SECRET}"
+      SECRET_KEY: "${FLEET_UI_SECRET_KEY:?Set FLEET_UI_SECRET_KEY in secrets.env}"
       FLEET_API_URL: "http://fleet-api:8000"
       APTLY_API_URL: "http://aptly-api:8080"
+      # GRAFANA_URL: base URL used to build iframe src attributes in templates.
+      # Production: full subdomain URL (goes through Caddy forward_auth).
       GRAFANA_URL: "https://grafana.${FLEET_DOMAIN}"
-      SEMAPHORE_URL: "https://semaphore.${FLEET_DOMAIN}"
+      SEMAPHORE_URL: "https://${FLEET_DOMAIN}/semaphore"
       FLEET_DOMAIN: "${FLEET_DOMAIN}"
       FLEET_ENV: "${FLEET_ENV:-production}"
+      FLASK_DEBUG: "${FLASK_DEBUG:-false}"
     depends_on:
       fleet-api:
         condition: service_started
@@ -167,7 +185,7 @@ services:
   postgresql:
     build:
       context: ./postgresql
-    container_name: postgresql
+    container_name: fleetbits-postgresql
     volumes:
       - postgresql_data:/var/lib/postgresql/data
     environment:
@@ -188,7 +206,12 @@ services:
     build:
       context: ./aptly
       dockerfile: Dockerfile
-    container_name: aptly-api
+    container_name: fleetbits-aptly-api
+    environment:
+      FLEET_API_URL: "http://fleet-api:8000"
+      OPERATOR_USERNAME: "${OPERATOR_USERNAME:-admin}"
+      OPERATOR_PASSWORD: "${OPERATOR_PASSWORD}"
+      REPO_KEY_SYNC_INTERVAL_SECONDS: "${REPO_KEY_SYNC_INTERVAL_SECONDS:-300}"
     volumes:
       - aptly_data:/root/.aptly
     healthcheck:
@@ -204,7 +227,7 @@ services:
   # ─── Host metrics exporter ──────────────────────────────────────────────────
   node-exporter:
     image: prom/node-exporter:v1.8.2
-    container_name: node-exporter
+    container_name: fleetbits-node-exporter
     pid: host
     command:
       - "--path.rootfs=/host"
@@ -218,7 +241,7 @@ services:
   # ─── Container metrics exporter ─────────────────────────────────────────────
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.2
-    container_name: cadvisor
+    container_name: fleetbits-cadvisor
     privileged: true
     devices:
       - /dev/kmsg
@@ -228,6 +251,42 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── MQTT message broker ──────────────────────────────────────────────────────
+  mosquitto:
+    build:
+      context: ./mosquitto
+    container_name: fleetbits-mosquitto
+    environment:
+      MQTT_BROKER_USERNAME: "${MQTT_BROKER_USERNAME:?Set MQTT_BROKER_USERNAME in secrets.env}"
+      MQTT_BROKER_PASSWORD: "${MQTT_BROKER_PASSWORD:?Set MQTT_BROKER_PASSWORD in secrets.env}"
+      FLEET_API_URL: "http://fleet-api:8000"
+      FLEET_OPERATOR_TOKEN: "${FLEET_OPERATOR_TOKEN:-}"
+      MQTT_ACL_SYNC_INTERVAL: "300"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+    depends_on:
+      - fleet-api
+    restart: unless-stopped
+    networks:
+      - fleet_net
+
+  # ─── MQTT → Prometheus exporter ─────────────────────────────────────────────
+  mqtt-exporter:
+    build:
+      context: ./mqtt-exporter
+    container_name: fleetbits-mqtt-exporter
+    environment:
+      MQTT_HOST: "mosquitto"
+      MQTT_PORT: "1883"
+      MQTT_USERNAME: "${MQTT_BROKER_USERNAME:?Set MQTT_BROKER_USERNAME in secrets.env}"
+      MQTT_PASSWORD: "${MQTT_BROKER_PASSWORD:?Set MQTT_BROKER_PASSWORD in secrets.env}"
+      METRICS_PORT: "9234"
+    depends_on:
+      - mosquitto
     restart: unless-stopped
     networks:
       - fleet_net
@@ -254,7 +313,7 @@ services:
       context: ../../FleetBits-agent
       dockerfile: Dockerfile.container
     image: fleetbits/vps-device:latest
-    container_name: vps-device
+    container_name: fleetbits-vps-device
     environment:
       SITE_ID:             "control-plane"
       ZONE_ID:             "vps"
@@ -279,13 +338,16 @@ services:
   caddy:
     build:
       context: ./caddy
-    container_name: caddy
+    container_name: fleetbits-caddy
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"   # HTTP/3
     environment:
       FLEET_DOMAIN: "${FLEET_DOMAIN}"
+      ALERTMANAGER_BASIC_AUTH_USER: "${ALERTMANAGER_BASIC_AUTH_USER:?Set ALERTMANAGER_BASIC_AUTH_USER in secrets.env}"
+      ALERTMANAGER_BASIC_AUTH_HASH: "${ALERTMANAGER_BASIC_AUTH_HASH:?Set ALERTMANAGER_BASIC_AUTH_HASH in secrets.env}"
+      GRAFANA_PROXY_SECRET: "${GRAFANA_PROXY_SECRET:?Set GRAFANA_PROXY_SECRET in secrets.env}"
     volumes:
       - caddy_data:/data
       - caddy_config:/config
@@ -303,6 +365,7 @@ volumes:
   semaphore_data:
   postgresql_data:
   aptly_data:
+  mosquitto_data:
   caddy_data:
   caddy_config:
 

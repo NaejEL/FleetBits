@@ -7,9 +7,9 @@ This repository contains everything that runs on your **VPS control plane**: all
 | Repo | Purpose |
 |---|---|
 | **FleetBits-platform** ← you are here | Docker Compose control plane + Ansible automation |
-| [FleetBits-api](https://github.com/NaejEL/FleetBits-api) | Fleet REST API (FastAPI + PostgreSQL) |
-| [FleetBits-ui](https://github.com/NaejEL/FleetBits-ui) | Operator web interface (Flask) |
-| [FleetBits-agent](https://github.com/NaejEL/FleetBits-agent) | Edge device agent (.deb package) |
+| `FleetBits-api` | Fleet REST API (FastAPI + PostgreSQL) |
+| `FleetBits-ui` | Operator web interface (Flask) |
+| `FleetBits-agent` | Edge device agent (.deb package) |
 
 ---
 
@@ -42,7 +42,7 @@ When you install FleetBits, these 13 services start automatically. You do not ne
 Run this on your Proxmox host shell. It creates an LXC container, installs Docker, and starts the full stack:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/NaejEL/FleetBits-platform/main/scripts/proxmox/ct/fleetbits.sh)"
+GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/ct/fleetbits.sh)"
 ```
 
 The script asks for:
@@ -56,8 +56,8 @@ After ~5 minutes, it prints `https://fleet.yourdomain.com` and an admin password
 ### Option B — Any Debian 12 server
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NaejEL/FleetBits-platform/main/scripts/proxmox/install/fleetbits-install.sh \
-  | FLEET_DOMAIN=fleet.yourdomain.com bash
+curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/install/fleetbits-install.sh \
+  | GITHUB_OWNER=<github-owner> FLEET_DOMAIN=fleet.yourdomain.com bash
 ```
 
 ### Nginx on the Proxmox host (Option A only)
@@ -84,6 +84,8 @@ fleetbits-update
 ```
 
 This pulls the latest platform config (Prometheus rules, Grafana dashboards, Caddy config), pulls new API and UI images from GHCR, and restarts only the changed containers. Expected downtime: ~5–10 seconds per service.
+
+For a full lifecycle walkthrough (dry-run, health checks, rollback path), see [`docs/operations/update-lifecycle.md`](docs/operations/update-lifecycle.md).
 
 --
 
@@ -163,9 +165,21 @@ The script generates all secrets, writes every config file, and starts the full 
 |-----|---------|-------|
 | http://localhost | Fleet UI | Login: `admin` / your `OPERATOR_PASSWORD` |
 | http://localhost:8000/docs | Fleet API + Swagger | |
-| http://localhost:3000 | Grafana | Same credentials as Fleet UI (after SSO is configured) |
-| http://localhost:3001 | Semaphore | |
+| http://localhost/grafana | Grafana | Routed through Caddy with Fleet UI SSO (no direct :3000 login in dev) |
+| http://localhost/semaphore | Semaphore | Routed through Caddy (dev/prod parity) |
+| http://localhost/alertmanager | Alertmanager | Basic auth via `ALERTMANAGER_BASIC_AUTH_*` in `secrets.env` |
 | http://localhost:9090 | Prometheus | |
+
+### Telemetry ingest security (March 2026)
+
+Fleet metrics and logs ingress is now enforced through `fleet-api` authentication:
+
+- `https://metrics.<domain>/api/v1/write` is routed to `fleet-api` telemetry ingress (device bearer required)
+- `https://logs.<domain>/loki/api/v1/push` is routed to `fleet-api` telemetry ingress (device bearer required)
+- Direct unauthenticated writes to Prometheus/Loki public routes are blocked at Caddy
+
+Compatibility rollback (temporary only): set `TELEMETRY_AUTH_REQUIRED=false` in `secrets.env` and restart `fleet-api`.
+Use this only as an emergency bridge during migration; keep it `true` in production.
 
 ### Manual setup
 
@@ -176,6 +190,18 @@ cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml
 cd docker
 docker compose --env-file ../secrets.env up -d
 ```
+
+### Security contributor guardrails
+
+Enable pre-commit hooks locally and run them before submitting a PR:
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+Security/governance files are CODEOWNERS-protected and expected to receive owner review.
 
 ---
 

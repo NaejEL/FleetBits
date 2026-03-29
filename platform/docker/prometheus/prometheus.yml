@@ -27,6 +27,20 @@ scrape_configs:
           device_role: "control-plane"
           environment: "production"
 
+  # ── VPS host node_exporter (systemd unit bound to Docker bridge gateway) ───
+  # When node_exporter is installed as a native systemd unit (see install script),
+  # it binds to 172.17.0.1:9100. This provides host-level metrics even when the
+  # containerised node-exporter is not running.
+  - job_name: "vps_host_native"
+    static_configs:
+      - targets: ["172.17.0.1:9100"]
+        labels:
+          device_id: "vps-control-plane"
+          device_role: "control-plane"
+          environment: "production"
+    # Tolerate absence — host node_exporter may not be installed in dev environments
+    honor_labels: true
+
   # ── Prometheus self-scrape ─────────────────────────────────────────────────
   - job_name: "prometheus"
     static_configs:
@@ -66,3 +80,11 @@ scrape_configs:
   # No scrape config needed — Prometheus remote-write receiver is enabled
   # via --web.enable-remote-write-receiver flag in Docker Compose.
   # All edge metrics arrive at: POST /api/v1/write
+
+  # ── Mosquitto MQTT broker metrics ─────────────────────────────────────────
+  - job_name: "mqtt_broker"
+    static_configs:
+      - targets: ["mqtt-exporter:9234"]
+        labels:
+          instance: "vps-control-plane"
+          environment: "production"

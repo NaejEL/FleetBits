@@ -23,11 +23,17 @@ services:
       - "9090:9090"
 
   grafana:
+    build:
+      context: ./grafana
+      dockerfile: Dockerfile
+    image: fleetbits-grafana:dev
     ports:
       - "3000:3000"
     environment:
-      GF_SERVER_ROOT_URL: "http://localhost:3000"
-      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      GF_SERVER_ROOT_URL: "http://localhost/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes: !reset
+      - grafana_data:/var/lib/grafana
 
   loki:
     ports:
@@ -44,6 +50,12 @@ services:
   postgresql:
     ports:
       - "5432:5432"
+
+  # Docker Desktop (Windows/macOS) does not support mount propagation flags
+  # like rslave for '/'. Override the base volume to avoid startup failure.
+  node-exporter:
+    volumes:
+      - /:/host:ro
 
   fleet-api:
     # Build from sibling repo instead of pulling from registry
@@ -68,6 +80,6 @@ services:
       - "5000:5000"
     environment:
       FLEET_API_URL: "http://fleet-api:8000"
-      GRAFANA_URL: "http://grafana:3000"
-      SEMAPHORE_URL: "http://localhost:3001"
+      GRAFANA_URL: "http://localhost/grafana"
+      SEMAPHORE_URL: "http://localhost/semaphore"
       FLEET_ENV: "development"

@@ -1,0 +1,17 @@
+[Unit]
+Description=Prometheus systemd exporter — exposes systemd unit states as metrics
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart={{ systemd_exporter_install_dir }}/systemd_exporter \
+    --web.listen-address={{ systemd_exporter_listen_address }} \
+    {% if systemd_exporter_enable_restart_count %}--collector.enable-restart-count{% endif %}
+
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
