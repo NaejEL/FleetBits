@@ -8,7 +8,7 @@
 # Build arg:     APTLY_URL  (optional)  e.g. http://aptly-api:8080
 # Build arg:     AGENT_VERSION (optional) e.g. 1.0.0
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG APTLY_URL=""
 ARG AGENT_VERSION=""
