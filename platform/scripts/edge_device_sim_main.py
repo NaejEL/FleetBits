@@ -107,6 +107,12 @@ def _request(
         except json.JSONDecodeError:
             payload = raw
         return exc.code, payload, dict(exc.headers or {})
+    except urllib.error.URLError as exc:
+        # Treat transport-level errors as an HTTP-like failure so callers can
+        # decide whether the request is fatal (_ensure_ok) or informational.
+        # This keeps bootstrap deterministic in CI when optional probes (e.g.
+        # caddy package path checks) hit transient DNS/startup races.
+        return 599, {"detail": str(exc.reason)}, {}
 
 
 def _ensure_ok(status: int, allowed: tuple[int, ...], action: str) -> None:
