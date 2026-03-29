@@ -1,19 +1,19 @@
 [Unit]
-Description=Fleet Agent (Grafana Alloy)
+Description=Fleet Agent telemetry collector
 After=network-online.target
 Wants=network-online.target
-# fleet-agent depends on a valid config.alloy — regenerate it before starting.
+# fleet-agent depends on a valid runtime config — regenerate it before starting.
 # If generate-config.sh fails (missing identity file), the service will not start.
 
 [Service]
 Type=simple
 User=root
 
-# Regenerate Alloy config from device-identity.conf on every start.
+# Regenerate runtime config from device-identity.conf on every start.
 # Idempotent: no-op if nothing changed; updates config if identity was modified.
 ExecStartPre=/usr/lib/fleet-agent/generate-config.sh
 
-ExecStart=/usr/bin/alloy run /etc/alloy/config.alloy --disable-reporting
+ExecStart=/usr/lib/fleet-agent/run-telemetry.sh
 
 # Restart policy: restart on any failure within 5s
 Restart=on-failure

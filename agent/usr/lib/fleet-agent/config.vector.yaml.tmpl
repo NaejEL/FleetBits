@@ -1,0 +1,83 @@
+# /usr/lib/fleet-agent/config.vector.yaml.tmpl
+# ─────────────────────────────────────────────────────────────────────────────
+# Vector configuration template for armhf devices.
+# ALL_CAPS_PLACEHOLDER values are substituted by generate-config.sh.
+# This file is installed by the fleet-agent .deb; do not edit it directly.
+# To change the active config re-run: /usr/lib/fleet-agent/generate-config.sh
+# ─────────────────────────────────────────────────────────────────────────────
+
+data_dir: /var/lib/fleet-agent/vector
+
+sources:
+  host_metrics:
+    type: host_metrics
+    scrape_interval_secs: SCRAPE_INTERVAL_SECONDS_PLACEHOLDER
+
+  journald:
+    type: journald
+    current_boot_only: false
+    extra_args:
+      - --since=-12h
+
+transforms:
+  add_metric_labels:
+    type: remap
+    inputs:
+      - host_metrics
+    source: |
+      .tags.site = "SITE_ID_PLACEHOLDER"
+      .tags.zone = "ZONE_ID_PLACEHOLDER"
+      .tags.device_role = "DEVICE_ROLE_PLACEHOLDER"
+      .tags.device_id = "DEVICE_ID_PLACEHOLDER"
+      .tags.profile = "PROFILE_PLACEHOLDER"
+
+  add_log_labels:
+    type: remap
+    inputs:
+      - journald
+    source: |
+      .site = "SITE_ID_PLACEHOLDER"
+      .zone = "ZONE_ID_PLACEHOLDER"
+      .device_role = "DEVICE_ROLE_PLACEHOLDER"
+      .device_id = "DEVICE_ID_PLACEHOLDER"
+      .profile = "PROFILE_PLACEHOLDER"
+      if exists(._SYSTEMD_UNIT) && !is_null(._SYSTEMD_UNIT) {
+        .service = ._SYSTEMD_UNIT
+      } else if exists(.SYSLOG_IDENTIFIER) && !is_null(.SYSLOG_IDENTIFIER) {
+        .service = .SYSLOG_IDENTIFIER
+      } else {
+        .service = "unknown"
+      }
+      if exists(.PRIORITY) && !is_null(.PRIORITY) {
+        .level = to_string(.PRIORITY) ?? "unknown"
+      }
+
+sinks:
+  metrics_central:
+    type: prometheus_remote_write
+    inputs:
+      - add_metric_labels
+    endpoint: "FLEET_METRICS_URL_PLACEHOLDER"
+    auth:
+      strategy: bearer
+      token: "FLEET_AGENT_TOKEN_PLACEHOLDER"
+
+  logs_central:
+    type: loki
+    inputs:
+      - add_log_labels
+    endpoint: "FLEET_LOGS_ENDPOINT_PLACEHOLDER"
+    path: "FLEET_LOGS_PATH_PLACEHOLDER"
+    auth:
+      strategy: bearer
+      token: "FLEET_AGENT_TOKEN_PLACEHOLDER"
+    labels:
+      site: "{{ site }}"
+      zone: "{{ zone }}"
+      device_role: "{{ device_role }}"
+      device_id: "{{ device_id }}"
+      profile: "{{ profile }}"
+      service: "{{ service }}"
+      host: "{{ host }}"
+      source_type: "{{ source_type }}"
+      level: "{{ level }}"
