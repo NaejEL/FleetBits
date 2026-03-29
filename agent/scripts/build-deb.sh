@@ -121,7 +121,7 @@ for DEB_ARCH in "${BUILD_ARCHES[@]}"; do
     --depends     curl \
     --depends     jq \
     --depends     tailscale \
-    --config-files /etc/fleet/device-identity.conf \
+    --config-files /etc/fleet/device-identity.conf.example \
     --after-install  "${REPO_ROOT}/scripts/postinst.sh" \
     --package     "${DIST_DIR}/fleet-agent_${VERSION}_${DEB_ARCH}.deb" \
     --force \
