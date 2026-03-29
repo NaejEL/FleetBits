@@ -116,7 +116,7 @@ build_alloy_from_source() {
   fi
 
   local build_image
-  build_image=$(grep -m1 'grafana/alloy-build-image:' "${SOURCE_BUILD_DIR}/Dockerfile" | awk '{print $2}')
+  build_image=$(grep -m1 -o 'grafana/alloy-build-image:[^ ]*' "${SOURCE_BUILD_DIR}/Dockerfile")
   if [ -z "${build_image}" ]; then
     echo "ERROR: could not determine Grafana Alloy build image for v${ALLOY_VERSION}" >&2
     exit 1
