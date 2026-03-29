@@ -1,6 +1,5 @@
 [Unit]
 Description=Fleet Agent Heartbeat Timer
-Documentation=https://github.com/NaejEL/FleetBits-agent
 
 [Timer]
 # Fire immediately when the timer unit is started (so Fleet API sees the device fast).

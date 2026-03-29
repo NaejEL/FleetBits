@@ -74,7 +74,7 @@ if [ "${HTTP_STATUS}" != "200" ]; then
   fail "Fleet API returned HTTP ${HTTP_STATUS} — check provision_token validity"
 fi
 
-chmod 640 "${IDENTITY_FILE}"
+chmod 600 "${IDENTITY_FILE}"
 log "device-identity.conf deployed (HTTP ${HTTP_STATUS})"
 
 # ── Generate Alloy config ─────────────────────────────────────────────────────
@@ -105,6 +105,84 @@ fi
 # ── Enable fleet services ─────────────────────────────────────────────────────
 systemctl enable --now fleet-agent fleet-heartbeat.timer
 log "fleet-agent and heartbeat timer started"
+
+# ── Generate and register repository authorization key ───────────────────────
+REPO_KEY_DIR="/etc/fleet"
+REPO_KEY_PATH="${REPO_KEY_DIR}/repo-access.ed25519"
+REPO_PUB_PATH="${REPO_KEY_PATH}.pub"
+
+if ! command -v ssh-keygen >/dev/null 2>&1; then
+  fail "ssh-keygen is required to create the repository authorization key"
+fi
+
+if [ -f "${REPO_KEY_PATH}" ] && [ ! -f "${REPO_PUB_PATH}" ]; then
+  log "Private key exists but public key missing — regenerating public key"
+  ssh-keygen -y -f "${REPO_KEY_PATH}" > "${REPO_PUB_PATH}" \
+    || fail "Failed to regenerate repository public key"
+elif [ ! -f "${REPO_KEY_PATH}" ] && [ -f "${REPO_PUB_PATH}" ]; then
+  fail "Repository public key exists without private key; remove both files or reprovision"
+elif [ ! -f "${REPO_KEY_PATH}" ] && [ ! -f "${REPO_PUB_PATH}" ]; then
+  log "Generating repository authorization keypair"
+  mkdir -p "${REPO_KEY_DIR}"
+  ssh-keygen -q -t ed25519 -N "" -C "fleet-repo:${DEVICE_ID}" -f "${REPO_KEY_PATH}" \
+    || fail "Failed to generate repository authorization keypair"
+fi
+
+chmod 600 "${REPO_KEY_PATH}"
+chmod 644 "${REPO_PUB_PATH}"
+
+if ! grep -q '^FLEET_AGENT_TOKEN=' "${IDENTITY_FILE}"; then
+  fail "FLEET_AGENT_TOKEN missing from ${IDENTITY_FILE}; cannot register repository key"
+fi
+
+FLEET_AGENT_TOKEN=$(grep -m1 '^FLEET_AGENT_TOKEN=' "${IDENTITY_FILE}" | cut -d'=' -f2-)
+
+[ -n "${FLEET_AGENT_TOKEN:-}" ] || fail "FLEET_AGENT_TOKEN is empty in ${IDENTITY_FILE}"
+
+PUBKEY=$(cat "${REPO_PUB_PATH}")
+FINGERPRINT=$(ssh-keygen -lf "${REPO_PUB_PATH}" | awk '{print $2}')
+KEY_PAYLOAD=$(jq -n --arg public_key "${PUBKEY}" --arg key_fingerprint "${FINGERPRINT}" \
+  '{public_key: $public_key, key_fingerprint: $key_fingerprint}')
+
+KEY_STATUS=$(curl -sS \
+  --max-time 20 \
+  --retry 3 \
+  --retry-delay 2 \
+  -w "%{http_code}" \
+  -X POST "${API_URL}/api/v1/devices/${DEVICE_ID}/repo-key/self" \
+  -H "Authorization: Bearer ${FLEET_AGENT_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "${KEY_PAYLOAD}" \
+  -o /dev/null) \
+  || fail "Repository key registration request failed"
+
+if [ "${KEY_STATUS}" != "200" ]; then
+  fail "Repository key registration failed with HTTP ${KEY_STATUS}"
+fi
+
+log "Repository authorization key registered"
+
+# ── Configure APT credentials for authenticated Fleet repo access ───────────
+API_HOST=$(printf '%s' "${API_URL}" | sed -E 's#^https?://([^/]+).*$#\1#')
+if [[ "${API_HOST}" == api.* ]]; then
+  REPO_HOST="repo.${API_HOST#api.}"
+  AUTH_DIR="/etc/apt/auth.conf.d"
+  AUTH_FILE="${AUTH_DIR}/fleetbits-repo.conf"
+
+  mkdir -p "${AUTH_DIR}"
+  REPO_BASIC_TOKEN=$(grep -m1 '^REPO_BASIC_TOKEN=' "${IDENTITY_FILE}" | cut -d'=' -f2-)
+  [ -n "${REPO_BASIC_TOKEN:-}" ] || fail "REPO_BASIC_TOKEN missing from ${IDENTITY_FILE}; cannot configure APT repo auth"
+
+  cat > "${AUTH_FILE}" <<EOF
+machine ${REPO_HOST}
+login ${DEVICE_ID}
+password ${REPO_BASIC_TOKEN}
+EOF
+  chmod 600 "${AUTH_FILE}"
+  log "APT repo auth configured for ${REPO_HOST}"
+else
+  log "Could not infer repo host from api_url (${API_URL}) — skipping APT auth config"
+fi
 
 # ── Token is single-use: remove from disk immediately ────────────────────────
 rm -f "${TOKEN_FILE}"

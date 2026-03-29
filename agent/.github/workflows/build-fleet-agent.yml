@@ -24,9 +24,9 @@ jobs:
       - name: Install fpm
         run: |
           sudo apt-get install -y ruby ruby-dev build-essential
-          gem install fpm --no-document
+          sudo gem install fpm --no-document
 
-      - name: Install zip (for Alloy download)
+      - name: Install unzip (for Alloy download)
         run: sudo apt-get install -y unzip
 
       - name: Determine version
@@ -43,7 +43,7 @@ jobs:
         run: |
           TARGET_ARCH=${{ matrix.arch }} \
           VERSION=${{ steps.version.outputs.VERSION }} \
-          ./scripts/build-deb.sh
+          bash ./scripts/build-deb.sh
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
@@ -119,7 +119,7 @@ jobs:
             -d "{\"Snapshots\": [{\"Component\": \"main\", \"Name\": \"${SNAPSHOT}\"}], \"Signing\": ${SIGNING}}" \
             "${APTLY_API_URL}/api/publish/dev/bookworm"
 
-          - name: Create GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/fleet-agent_${{ steps.version.outputs.VERSION }}_*.deb
@@ -151,11 +151,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Normalize image owner
+        shell: bash
+        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/naejel/fleetbits-agent
+          images: ghcr.io/${{ env.IMAGE_OWNER }}/fleetbits-agent
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

@@ -52,6 +52,8 @@ prometheus.scrape "processes" {
 // ===========================================================
 prometheus.exporter.mqtt "mqtt" {
   address = "MQTT_BROKER_HOST_PLACEHOLDER:MQTT_BROKER_PORT_PLACEHOLDER"
+  username = "MQTT_USERNAME_PLACEHOLDER"
+  password = "MQTT_PASSWORD_PLACEHOLDER"
 }
 
 prometheus.scrape "mqtt" {

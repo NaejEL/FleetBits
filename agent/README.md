@@ -39,12 +39,13 @@ For replacing a failed device, replacing an SD card, or bulk-enrolling an existi
 
 ```
 fleet-agent_<version>_<arch>.deb
-  /usr/bin/alloy                               <- Grafana Alloy binary (bundled)
+  /usr/bin/alloy or /usr/bin/vector           <- bundled telemetry runtime (arch-specific)
   /etc/fleet/device-identity.conf.example      <- identity template (filled at provision time)
-  /usr/lib/fleet-agent/generate-config.sh      <- generates /etc/alloy/config.alloy from identity
+  /usr/lib/fleet-agent/generate-config.sh      <- generates the active runtime config from identity
+  /usr/lib/fleet-agent/run-telemetry.sh        <- launches Alloy or Vector, depending on package arch
   /usr/lib/fleet-agent/heartbeat.sh            <- POSTs heartbeat to Fleet API every 30s
   /usr/lib/fleet-agent/firstboot.sh            <- first-boot self-enrollment
-  /lib/systemd/system/fleet-agent.service      <- main service (runs Alloy)
+  /lib/systemd/system/fleet-agent.service      <- main service (runs the bundled telemetry runtime)
   /lib/systemd/system/fleet-heartbeat.timer    <- systemd timer: heartbeat every 30s
   /lib/systemd/system/fleet-firstboot.service  <- one-shot enrollment unit (self-disabling)
 ```
@@ -57,10 +58,10 @@ The **only file an operator ever touches** is `/etc/fleet/device-identity.conf` 
 
 When `apt-get upgrade fleet-agent` runs on a device:
 
-1. `postinst.sh` re-runs `generate-config.sh` — Alloy config is regenerated from the current identity file
+1. `postinst.sh` re-runs `generate-config.sh` — the active telemetry config is regenerated from the current identity file
 2. `fleet-agent.service` restarts (~5 seconds)
 3. **The identity file is never overwritten** — it is declared as a Debian conffile
-4. **Telemetry gap is backfilled** — Alloy''s WAL replays any metrics buffered during the restart
+4. **Telemetry gap is backfilled on Alloy-based devices** — Alloy's WAL replays metrics buffered during the restart
 
 No operator action required. Devices update through the ring deployment process triggered from Fleet UI.
 
@@ -68,11 +69,13 @@ No operator action required. Devices update through the ring deployment process 
 
 ## Supported architectures
 
-| Architecture | Target hardware |
-|---|---|
-| `amd64` | Mini-PC, NUC, x86 servers |
-| `arm64` | Raspberry Pi 4/5, ARM64 SBCs |
-| `armhf` | Raspberry Pi 3/Zero, ARMv7 SBCs |
+| Architecture | Target hardware | Telemetry runtime |
+|---|---|---|
+| `amd64` | Mini-PC, NUC, x86 servers | Grafana Alloy |
+| `arm64` | Raspberry Pi 4/5, ARM64 SBCs | Grafana Alloy |
+| `armhf` | Raspberry Pi 3/Zero, ARMv7 SBCs | Vector |
+
+`armhf` intentionally uses Vector because current Grafana Alloy releases do not ship official `armhf` artifacts.
 
 ---
 
@@ -83,7 +86,10 @@ FleetBits-agent/
 ├── etc/fleet/
 │   └── device-identity.conf.example    identity template
 ├── usr/lib/fleet-agent/
-│   ├── generate-config.sh              reads identity -> writes Alloy config
+│   ├── config.alloy.tmpl               Alloy template for amd64/arm64
+│   ├── config.vector.yaml.tmpl         Vector template for armhf
+│   ├── generate-config.sh              reads identity -> writes the active runtime config
+│   ├── run-telemetry.sh                launches Alloy or Vector
 │   ├── heartbeat.sh                    heartbeat sender
 │   └── firstboot.sh                    SD card replacement self-enrollment
 ├── lib/systemd/system/
@@ -94,6 +100,7 @@ FleetBits-agent/
 │   ├── build-deb.sh                    fpm invocation (all three architectures)
 │   └── postinst.sh                     Debian postinst hook
 ├── ALLOY_VERSION                       pinned Grafana Alloy version
+├── VECTOR_VERSION                      pinned Vector version for armhf
 └── .github/workflows/
     └── build-fleet-agent.yml           CI: builds on tag push, publishes to Aptly dev
 ```
@@ -105,12 +112,18 @@ FleetBits-agent/
 ### Prerequisites
 
 - Ruby + `fpm` (`gem install fpm`)
-- `curl` (downloads the Alloy binary at build time)
+- `curl`
+- `tar`
+- `unzip`
+
+The build script downloads official upstream release artifacts at build time:
+- Alloy for `amd64` / `arm64`
+- Vector for `armhf`
 
 ### Build for all architectures
 
 ```bash
-AGENT_VERSION=0.1.0 ./scripts/build-deb.sh
+VERSION=0.1.0 ./scripts/build-deb.sh
 # Outputs:
 #   dist/fleet-agent_0.1.0_amd64.deb
 #   dist/fleet-agent_0.1.0_arm64.deb
@@ -120,7 +133,7 @@ AGENT_VERSION=0.1.0 ./scripts/build-deb.sh
 ### Build for a single architecture
 
 ```bash
-AGENT_VERSION=0.1.0 ARCH=arm64 ./scripts/build-deb.sh
+TARGET_ARCH=arm64 VERSION=0.1.0 ./scripts/build-deb.sh
 ```
 
 ### CI/CD
@@ -139,6 +152,18 @@ The `build-fleet-agent.yml` workflow:
 
 Use `promote.yml` (manual `workflow_dispatch`) to advance the release through staging → production rings.
 
+### Security contributor guardrails
+
+Enable and run pre-commit hooks before opening a PR:
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+Security/governance files are covered by CODEOWNERS review policy.
+
 ---
 
 ## device-identity.conf reference
@@ -153,13 +178,15 @@ DEVICE_ID=player-paris-hall-a-01
 SITE_ID=paris
 ZONE_ID=hall-a
 RING=0
+DEVICE_ROLE=player
+PROFILE=default
 
 FLEET_API_URL=https://api.fleet.yourdomain.com
 FLEET_AGENT_TOKEN=<per-device-bearer-token>
-PROMETHEUS_URL=https://metrics.fleet.yourdomain.com
-LOKI_URL=https://logs.fleet.yourdomain.com
+FLEET_METRICS_URL=https://metrics.fleet.yourdomain.com/api/v1/write
+FLEET_LOGS_URL=https://logs.fleet.yourdomain.com/loki/api/v1/push
 
-# Feature flags (set per device by Ansible)
+# Feature flags (currently used by the Alloy runtime)
 ENABLE_MQTT_EXPORTER=false
 ENABLE_PROCESS_EXPORTER=false
 SCRAPE_INTERVAL=30s
