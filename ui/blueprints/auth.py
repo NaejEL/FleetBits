@@ -58,6 +58,9 @@ def login_submit():
         token_data = api.login(username, password)
         # api.login returns the raw token string
         jwt_token = token_data if isinstance(token_data, str) else token_data.get("access_token", "")
+        if not jwt_token:
+            flash("Login failed: invalid response from authentication service.", "error")
+            return render_template("login.html"), 401
         session["jwt"] = jwt_token
         session["username"] = username
         # Fetch full user profile to store role and site_scope for UI-level gating

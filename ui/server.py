@@ -33,10 +33,12 @@ def _require_secret_key() -> str:
 
 app = Flask(__name__)
 app.secret_key = _require_secret_key()
+_max_upload_bytes = int(os.environ.get("MAX_CONTENT_LENGTH", str(50 * 1024 * 1024)))
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=not _env_flag("FLASK_DEBUG", default=False),
+    MAX_CONTENT_LENGTH=_max_upload_bytes,
 )
 
 # ─── Blueprints ──────────────────────────────────────────────────────────────

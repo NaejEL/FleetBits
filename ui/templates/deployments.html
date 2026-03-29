@@ -109,7 +109,7 @@
             {% set next_ring = 'ring-1' if dep.rollout_mode == 'ring-0' else 'ring-2' %}
           <form method="post" action="{{ url_for('deployments.promote', deployment_id=dep.deployment_id) }}"
                 style="display:inline"
-                onsubmit="return confirm('Promote {{ dep.artifact_ref }} to {{ next_ring }}?')">
+                onsubmit="return confirm({{ ('Promote %s to %s?' % (dep.artifact_ref, next_ring)) | tojson }})">
             <button type="submit" class="btn btn-primary btn-sm">
               <svg class="icon"><use href="#icon-arrow-up"/></svg>
               Promote → {{ next_ring }}
