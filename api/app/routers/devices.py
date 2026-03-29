@@ -101,7 +101,7 @@ async def provision_device(
     Returns all environment variables needed for /etc/fleet/device-identity.conf,
     including MQTT credentials generated at provisioning time.
     """
-    from jose import JWTError
+    from jwt.exceptions import PyJWTError as JWTError
     from app.services.token import decode_token
 
     raw_token = credentials.credentials
@@ -166,6 +166,12 @@ async def provision_device(
     temp_bearer_token = generate_device_token()
     device.device_token_hash = hash_token(temp_bearer_token)
 
+    # Generate a separate repo token scoped exclusively to APT package downloads.
+    # Kept isolated from FLEET_AGENT_TOKEN so a leaked APT credential cannot be
+    # used to make fleet API calls (least-privilege).
+    repo_token = generate_device_token()
+    device.repo_token_hash = hash_token(repo_token)
+
     return DeviceIdentity(
         DEVICE_ID=device_id,
         SITE_ID=site_id,
@@ -173,6 +179,7 @@ async def provision_device(
         DEVICE_ROLE=device.role,
         PROFILE=device.profile_id,
         FLEET_AGENT_TOKEN=temp_bearer_token,
+        REPO_BASIC_TOKEN=repo_token,
         FLEET_METRICS_URL=metrics_url,
         FLEET_LOGS_URL=logs_url,
         HEADSCALE_PREAUTH_KEY=None,  # To be filled by operator portal
@@ -450,7 +457,7 @@ async def issue_device_token(
     - Provision JWT: single-use, device_id must be in allowed_device_ids.
     - Operator JWT: idempotent, can re-issue at any time.
     """
-    from jose import JWTError
+    from jwt.exceptions import PyJWTError as JWTError
     from app.services.token import decode_token
 
     raw_token = credentials.credentials
@@ -498,12 +505,17 @@ async def issue_device_token(
     # Generate new device token
     new_token = generate_device_token()
     device.device_token_hash = hash_token(new_token)
-    
-    # Generate per-device MQTT credentials
-    mqtt_username, mqtt_password = generate_mqtt_credentials(device_id)
-    device.mqtt_username = mqtt_username
-    device.mqtt_password_hash = hash_mqtt_password(mqtt_password)
-    device.mqtt_credentials_issued_at = datetime.now(UTC)
+
+    # Generate per-device MQTT credentials only if not already set.
+    # This avoids unintentionally rotating broker credentials on token re-issue.
+    if device.mqtt_username and device.mqtt_password_hash:
+        mqtt_username = device.mqtt_username
+        mqtt_password = ""
+    else:
+        mqtt_username, mqtt_password = generate_mqtt_credentials(device_id)
+        device.mqtt_username = mqtt_username
+        device.mqtt_password_hash = hash_mqtt_password(mqtt_password)
+        device.mqtt_credentials_issued_at = datetime.now(UTC)
 
     await write_audit_event(
         db,

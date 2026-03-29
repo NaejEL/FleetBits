@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 _ROLE_MAP: dict[str, str] = {
     "admin": "Admin",
     "operator": "Editor",
-    "technician": "Editor",
+    "technician": "Viewer",
     "viewer": "Viewer",
     "ci_bot": "Viewer",
 }

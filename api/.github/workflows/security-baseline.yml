@@ -16,6 +16,8 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:
@@ -26,6 +28,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -54,12 +58,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '1'
-          format: table
+        run: trivy fs --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format table .

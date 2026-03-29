@@ -14,9 +14,11 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.db import AsyncSessionLocal, get_db
 from app.dependencies import require_roles, get_current_user
@@ -36,20 +38,19 @@ PROMOTION_PATHS = {
 }
 
 
-def _call_aptly(method: str, endpoint: str, data: dict | None = None) -> dict | list | None:
-    """Call the Aptly REST API directly; return JSON response or None on error."""
-    import requests
-
+async def _call_aptly(method: str, endpoint: str, data: dict | None = None) -> dict | list | None:
+    """Call the Aptly REST API; return JSON response or None on error."""
     url = f"{APTLY_API_URL}/api/{endpoint.lstrip('/')}"
     try:
-        if method == "GET":
-            resp = requests.get(url, timeout=10)
-        elif method == "POST":
-            resp = requests.post(url, json=data, timeout=10)
-        elif method == "DELETE":
-            resp = requests.delete(url, timeout=10)
-        else:
-            return None
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if method == "GET":
+                resp = await client.get(url)
+            elif method == "POST":
+                resp = await client.post(url, json=data)
+            elif method == "DELETE":
+                resp = await client.delete(url)
+            else:
+                return None
 
         if resp.status_code in (200, 201):
             try:
@@ -62,28 +63,28 @@ def _call_aptly(method: str, endpoint: str, data: dict | None = None) -> dict | 
         return None
 
 
-def _stage_package_in_aptly_files(filename: str, content: bytes) -> str:
+async def _stage_package_in_aptly_files(filename: str, content: bytes) -> str:
     """Upload a package file into Aptly /api/files/<dir>; return staging dir name."""
-    import requests
-
     staging_dir = f"upload-{uuid.uuid4().hex[:12]}"
     url = f"{APTLY_API_URL}/api/files/{staging_dir}"
     files = {"file": (filename, content, "application/vnd.debian.binary-package")}
 
-    resp = requests.post(url, files=files, timeout=30)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, files=files)
+
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail="Failed to stage package in Aptly files API")
 
     return staging_dir
 
 
-def _import_staged_package_to_repo(repo: str, staging_dir: str, force: bool) -> dict[str, Any]:
+async def _import_staged_package_to_repo(repo: str, staging_dir: str, force: bool) -> dict[str, Any]:
     """Import files from Aptly staging dir into target repository."""
-    import requests
-
     url = f"{APTLY_API_URL}/api/repos/{repo}/file/{staging_dir}"
     params = {"forceReplace": "1" if force else "0"}
-    resp = requests.post(url, params=params, timeout=30)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, params=params)
 
     if resp.status_code not in (200, 201):
         detail = None
@@ -101,18 +102,21 @@ def _import_staged_package_to_repo(repo: str, staging_dir: str, force: bool) -> 
     return data if isinstance(data, dict) else {"result": data}
 
 
-def _run_gpg_command(args: list[str]) -> tuple[bool, str]:
-    """Run a GPG command; return (success, output)."""
-    try:
-        result = subprocess.run(
-            ["gpg", "--batch", "--yes"] + args,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return result.returncode == 0, result.stdout + result.stderr
-    except Exception as e:
-        return False, str(e)
+async def _run_gpg_command(args: list[str]) -> tuple[bool, str]:
+    """Run a GPG command in a thread; return (success, output)."""
+    def _run() -> tuple[bool, str]:
+        try:
+            result = subprocess.run(
+                ["gpg", "--batch", "--yes"] + args,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            return result.returncode == 0, result.stdout + result.stderr
+        except Exception as e:
+            return False, str(e)
+
+    return await run_in_threadpool(_run)
 
 
 def _extract_repo_token(auth_header: str | None) -> tuple[str | None, str | None]:
@@ -206,9 +210,9 @@ def _validate_promotion_path(source_repo: str, target_repo: str) -> tuple[str | 
     return source_dist, source_channel
 
 
-def _get_repo_package_details(repo_name: str) -> list[dict[str, Any]]:
+async def _get_repo_package_details(repo_name: str) -> list[dict[str, Any]]:
     """Return package details from Aptly for a repository."""
-    packages = _call_aptly("GET", f"repos/{repo_name}/packages?format=details")
+    packages = await _call_aptly("GET", f"repos/{repo_name}/packages?format=details")
     if packages is None:
         raise HTTPException(status_code=503, detail="Aptly API unavailable")
     if not isinstance(packages, list):
@@ -216,12 +220,12 @@ def _get_repo_package_details(repo_name: str) -> list[dict[str, Any]]:
     return packages
 
 
-def _build_promotion_plan(source_repo: str, target_repo: str) -> dict[str, Any]:
+async def _build_promotion_plan(source_repo: str, target_repo: str) -> dict[str, Any]:
     """Build package diff plan from source to target repository."""
     _validate_promotion_path(source_repo, target_repo)
 
-    source_packages = _get_repo_package_details(source_repo)
-    target_packages = _get_repo_package_details(target_repo)
+    source_packages = await _get_repo_package_details(source_repo)
+    target_packages = await _get_repo_package_details(target_repo)
 
     target_index: dict[tuple[str, str], str] = {}
     for p in target_packages:
@@ -315,14 +319,14 @@ async def _safe_audit_log(
 @router.get("/gpg-keys")
 async def list_gpg_keys(_: tuple = Depends(require_roles("admin", "operator"))):
     """List all GPG keys imported in the Aptly GPG keyring."""
-    import subprocess
-
     try:
-        result = subprocess.run(
-            ["gpg", "--list-keys", "--with-colons"],
-            capture_output=True,
-            text=True,
-            timeout=10,
+        result = await run_in_threadpool(
+            lambda: subprocess.run(
+                ["gpg", "--list-keys", "--with-colons"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail="Failed to list GPG keys")
@@ -377,12 +381,14 @@ Expire-Date: 0
 """
 
     try:
-        result = subprocess.run(
-            ["gpg", "--batch", "--generate-key"],
-            input=batch_config,
-            capture_output=True,
-            text=True,
-            timeout=60,
+        result = await run_in_threadpool(
+            lambda: subprocess.run(
+                ["gpg", "--batch", "--generate-key"],
+                input=batch_config,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"GPG generation failed: {result.stderr}")
@@ -437,12 +443,14 @@ async def import_gpg_key(
         raise HTTPException(status_code=400, detail="Invalid PGP key format")
 
     try:
-        result = subprocess.run(
-            ["gpg", "--batch", "--import"],
-            input=armored_key,
-            capture_output=True,
-            text=True,
-            timeout=10,
+        result = await run_in_threadpool(
+            lambda: subprocess.run(
+                ["gpg", "--batch", "--import"],
+                input=armored_key,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"GPG import failed: {result.stderr}")
@@ -477,11 +485,13 @@ async def delete_gpg_key(
         raise HTTPException(status_code=400, detail="Invalid key ID format")
 
     try:
-        result = subprocess.run(
-            ["gpg", "--batch", "--delete-keys", key_id],
-            capture_output=True,
-            text=True,
-            timeout=10,
+        result = await run_in_threadpool(
+            lambda: subprocess.run(
+                ["gpg", "--batch", "--delete-keys", key_id],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"GPG deletion failed: {result.stderr}")
@@ -509,7 +519,7 @@ async def delete_gpg_key(
 @router.get("/repos")
 async def list_repos(_: tuple = Depends(require_roles("viewer", "technician", "operator", "admin"))):
     """List all Aptly repositories."""
-    repos = _call_aptly("GET", "repos")
+    repos = await _call_aptly("GET", "repos")
     if repos is None:
         raise HTTPException(status_code=503, detail="Aptly API unavailable")
     return {"repos": repos}
@@ -521,7 +531,7 @@ async def list_packages(
     _: tuple = Depends(require_roles("viewer", "technician", "operator", "admin")),
 ):
     """List packages in a specific repository."""
-    packages = _call_aptly("GET", f"repos/{repo_name}/packages?format=details")
+    packages = await _call_aptly("GET", f"repos/{repo_name}/packages?format=details")
     if packages is None:
         raise HTTPException(status_code=503, detail="Aptly API unavailable")
     return {"packages": packages}
@@ -530,7 +540,7 @@ async def list_packages(
 @router.get("/publish")
 async def list_publish(_: tuple = Depends(require_roles("viewer", "technician", "operator", "admin"))):
     """List all published endpoints."""
-    endpoints = _call_aptly("GET", "publish")
+    endpoints = await _call_aptly("GET", "publish")
     if endpoints is None:
         raise HTTPException(status_code=503, detail="Aptly API unavailable")
     return {"endpoints": endpoints}
@@ -594,8 +604,10 @@ async def authorize_repo_download(
             headers={"WWW-Authenticate": "Basic realm=FleetBits repo"},
         )
 
+    # Accept only the dedicated repo token (not the fleet bearer token) so that
+    # APT credentials cannot be used to call Fleet API endpoints.
     result = await db.execute(
-        select(Device).where(Device.device_token_hash == hash_token(raw_token))
+        select(Device).where(Device.repo_token_hash == hash_token(raw_token))
     )
     device = result.scalar_one_or_none()
 
@@ -650,7 +662,7 @@ async def list_repos_by_distribution(
     _: tuple = Depends(require_roles("viewer", "technician", "operator", "admin")),
 ):
     """List repositories organized by distribution and channel (dev/staging/prod)."""
-    repos = _call_aptly("GET", "repos")
+    repos = await _call_aptly("GET", "repos")
     if repos is None:
         raise HTTPException(status_code=503, detail="Aptly API unavailable")
 
@@ -661,9 +673,9 @@ async def list_repos_by_distribution(
     for dist in distributions:
         by_dist[dist] = {"dev": [], "staging": [], "prod": []}
 
-    def _arch_counts_for_repo(repo_name: str) -> dict[str, int]:
+    async def _arch_counts_for_repo(repo_name: str) -> dict[str, int]:
         counts = {"amd64": 0, "arm64": 0, "armhf": 0, "other": 0}
-        pkgs = _call_aptly("GET", f"repos/{repo_name}/packages?format=details")
+        pkgs = await _call_aptly("GET", f"repos/{repo_name}/packages?format=details")
         if not isinstance(pkgs, list):
             return counts
         for pkg in pkgs:
@@ -680,7 +692,7 @@ async def list_repos_by_distribution(
         dist, channel = _infer_distribution_for_repo(repo_name, requested_distribution=distribution)
         if dist and channel:
             repo_with_counts = dict(r)
-            repo_with_counts["arch_counts"] = _arch_counts_for_repo(repo_name)
+            repo_with_counts["arch_counts"] = await _arch_counts_for_repo(repo_name)
             by_dist[dist][channel].append(repo_with_counts)
 
     # Filter by distribution if specified
@@ -852,7 +864,7 @@ async def upload_package(
             warnings.append("No Maintainer field in control file")
 
         # Stage file in Aptly files API for optional later import.
-        staging_dir = _stage_package_in_aptly_files(filename=filename, content=content)
+        staging_dir = await _stage_package_in_aptly_files(filename=filename, content=content)
         package_reference = f"{staging_dir}:{filename}"
         
         # Audit log
@@ -936,7 +948,7 @@ async def add_package_to_repo(
         if not staging_dir or not staged_filename:
             raise HTTPException(status_code=400, detail="Invalid package_reference")
 
-        import_result = _import_staged_package_to_repo(repo=repo, staging_dir=staging_dir, force=bool(force))
+        import_result = await _import_staged_package_to_repo(repo=repo, staging_dir=staging_dir, force=bool(force))
         
         # Audit log
         await _safe_audit_log(
@@ -981,7 +993,7 @@ async def get_promotion_plan(
     - <distribution>-dev → <distribution>-staging
     - <distribution>-staging → <distribution>-prod
     """
-    return _build_promotion_plan(source_repo=source_repo, target_repo=target_repo)
+    return await _build_promotion_plan(source_repo=source_repo, target_repo=target_repo)
 
 
 @router.post("/promotions/execute")
@@ -999,7 +1011,7 @@ async def execute_promotion(
     if not source_repo or not target_repo:
         raise HTTPException(status_code=400, detail="source_repo and target_repo are required")
 
-    plan = _build_promotion_plan(source_repo=source_repo, target_repo=target_repo)
+    plan = await _build_promotion_plan(source_repo=source_repo, target_repo=target_repo)
 
     if plan["summary"]["to_add"] == 0 and plan["summary"]["to_update"] == 0:
         return {
@@ -1008,7 +1020,7 @@ async def execute_promotion(
             "plan": plan,
         }
 
-    refs_resp = _call_aptly("GET", f"repos/{source_repo}/packages")
+    refs_resp = await _call_aptly("GET", f"repos/{source_repo}/packages")
     if refs_resp is None or not isinstance(refs_resp, list):
         raise HTTPException(status_code=503, detail="Failed to fetch package references from Aptly")
 
@@ -1022,7 +1034,7 @@ async def execute_promotion(
 
     add_result: dict | list | None = None
     for body in add_payloads:
-        add_result = _call_aptly("POST", f"repos/{target_repo}/packages", body)
+        add_result = await _call_aptly("POST", f"repos/{target_repo}/packages", body)
         if add_result is not None:
             break
 

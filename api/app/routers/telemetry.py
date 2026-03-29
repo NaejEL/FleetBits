@@ -255,7 +255,7 @@ def _enforce_site_scope(query: str, site_scope: str | None) -> str:
 
     def _inject(m: re.Match) -> str:
         inner = m.group(1).strip()
-        if "site=" in inner:
+        if _SITE_SELECTOR_RE.search(inner):
             return m.group(0)  # site already present — keep as-is
         if inner:
             return f'{{{inner},site="{site_scope}"}}'

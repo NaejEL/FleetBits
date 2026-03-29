@@ -289,6 +289,8 @@ def rewrite_loki_payload(
         return _rewrite_loki_proto(body, canonical)
     if "application/json" in ct_lower:
         return _rewrite_loki_json(body, canonical)
+    if "protobuf" in ct_lower:
+        return _rewrite_loki_proto(body, canonical)
 
     raise ValueError(
         f"Unsupported Loki payload format: Content-Type={content_type!r} "

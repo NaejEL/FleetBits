@@ -219,6 +219,9 @@ async def device_token(test_db, test_devices):
         )
         device = result.scalar_one()
         device.device_token_hash = hash_token(raw_token)
+        # Keep package-repo authorization tests compatible with the stricter
+        # repo-token flow by provisioning the same fixture token as a repo token.
+        device.repo_token_hash = hash_token(raw_token)
         await session.commit()
     return raw_token
 
