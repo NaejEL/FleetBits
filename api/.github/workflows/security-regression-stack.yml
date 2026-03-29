@@ -24,6 +24,7 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/FleetBits-platform
           path: FleetBits-platform
+          ref: ${{ github.head_ref || 'main' }}
 
       - name: Materialize sibling path expected by compose build context
         shell: bash
