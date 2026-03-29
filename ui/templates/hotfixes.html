@@ -2,7 +2,10 @@
 
 {% block title %}Hotfix Console — Fleet Manager{% endblock %}
 
-{% block breadcrumb %}Hotfix Console{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Hotfixes</strong>
+{% endblock %}
 
 {% block topbar_actions %}
   <a href="#create-hotfix" class="btn btn-warning btn-sm">+ Create Hotfix</a>

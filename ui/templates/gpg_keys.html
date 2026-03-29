@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}GPG Key Management — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <a href="{{ url_for('packages.packages_browser') }}">Packages</a>
+  › <strong>GPG Keys</strong>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">GPG KEY MANAGEMENT</h1>
+  <p class="page-sub">Manage GPG keys for signing Aptly packages. Keys are used to sign package metadata during publication.</p>
+</div>
+
+<!-- Current Keys Section -->
+<section class="card-section">
+  <h2 class="section-title">EXISTING KEYS</h2>
+  {% if gpg_keys %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Key ID</th>
+          <th>UID</th>
+          <th>Algorithm</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for key in gpg_keys %}
+          <tr>
+            <td><code>{{ key.key_id | default('—') }}</code></td>
+            <td>{{ key.uid | default('—') }}</td>
+            <td>{{ key.algorithm | default('—') }}</td>
+            <td>{{ key.created | default('—') }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('packages.gpg_keys_delete', key_id=key.key_id) }}"
+                    style="display: inline-block; margin: 0;">
+                <input type="hidden" name="key_id" value="{{ key.key_id }}">
+                <button type="submit" class="btn btn-sm btn-danger" 
+                        onclick="return confirm('Are you sure you want to delete this key? ({{ key.key_id }})')">
+                  Delete
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No GPG keys found. Generate or import a key to get started.</p>
+  {% endif %}
+</section>
+
+<!-- Generate New Key -->
+<section class="card-section">
+  <h2 class="section-title">GENERATE NEW KEY</h2>
+  <form method="POST" action="{{ url_for('packages.gpg_keys_generate') }}" class="form-grid">
+    <div class="form-group">
+      <label for="name">Key Name / Organization</label>
+      <input type="text" id="name" name="name" required placeholder="e.g., FleetBits Release">
+      <small>Display name for the key (e.g., your organization name)</small>
+    </div>
+    <div class="form-group">
+      <label for="email">Email Address</label>
+      <input type="email" id="email" name="email" required placeholder="release@example.com">
+      <small>Email address for the key (e.g., release team email)</small>
+    </div>
+    <div class="form-group">
+      <label for="key_type">Key Type</label>
+      <select id="key_type" name="key_type">
+        <option value="rsa4096" selected>RSA 4096-bit (recommended)</option>
+        <option value="rsa2048">RSA 2048-bit</option>
+        <option value="eddsa">EdDSA (modern, smaller)</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Generate Key</button>
+  </form>
+  <p class="form-note">Generation may take a few seconds. The page will refresh automatically.</p>
+</section>
+
+<!-- Import Existing Key -->
+<section class="card-section">
+  <h2 class="section-title">IMPORT EXISTING KEY</h2>
+  <form method="POST" action="{{ url_for('packages.gpg_keys_import') }}" class="form-grid">
+    <div class="form-group">
+      <label for="armored_key">Public Key (PGP Armored Format)</label>
+      <textarea id="armored_key" name="armored_key" required rows="12"
+                placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----&#10;...&#10;-----END PGP PUBLIC KEY BLOCK-----"></textarea>
+      <small>Paste the full public key block starting with -----BEGIN PGP PUBLIC KEY BLOCK----- and ending with -----END PGP PUBLIC KEY BLOCK-----</small>
+    </div>
+    <button type="submit" class="btn btn-primary">Import Key</button>
+  </form>
+</section>
+
+<!-- Info Section -->
+<section class="card-section">
+  <h2 class="section-title">KEY MANAGEMENT</h2>
+  <div class="info-box">
+    <h3>What is a GPG Key?</h3>
+    <p>A GPG key is a cryptographic key used to digitally sign Debian package metadata. When you publish packages to Aptly, the repository is signed with your GPG key so that devices can verify the authenticity of packages before installation.</p>
+    
+    <h3>How to Use Keys</h3>
+    <ul>
+      <li><strong>Generate new:</strong> Create a new key for this FleetBits instance (recommended for new deployments)</li>
+      <li><strong>Import existing:</strong> Use an existing organizational GPG key if you have one</li>
+      <li><strong>Delete unused:</strong> Remove old or revoked keys</li>
+    </ul>
+
+    <h3>Best Practices</h3>
+    <ul>
+      <li>Use RSA 4096-bit or EdDSA for new keys (better security)</li>
+      <li>Use an organizational email address (e.g., release@your-org.com)</li>
+      <li>Keep the private key in your Ansible vault or secure storage</li>
+      <li>Rotate keys annually or after personnel changes</li>
+      <li>Back up exported keys in a secure location</li>
+    </ul>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .info-box {
+    background: #f5f5f5;
+    border-left: 4px solid #007bff;
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+  }
+
+  .info-box h3 {
+    margin-top: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .info-box ul {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+  }
+
+  .info-box li {
+    margin: 0.25rem 0;
+    font-size: 0.9rem;
+  }
+
+  .form-note {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: #666;
+    font-style: italic;
+  }
+
+  textarea {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+  }
+
+  .btn-danger {
+    background: #dc3545;
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  .btn-danger:hover {
+    background: #c82333;
+  }
+</style>
+{% endblock %}

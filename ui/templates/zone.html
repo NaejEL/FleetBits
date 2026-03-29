@@ -192,18 +192,36 @@
     <div class="dialog-body">
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Device ID *</label>
+          <label class="form-label">
+            Device ID *
+            <span class="tip">
+              <span class="tip-icon">?</span>
+              <span class="tip-text">Permanent unique identifier for this device. Recommended format: {site}-{zone}-{role}-{seq}. Cannot be changed after creation.</span>
+            </span>
+          </label>
           <input name="device_id" class="form-control" placeholder="paris-a-rpi-01" required />
           <span class="form-hint">Unique fleet identifier</span>
         </div>
         <div class="form-group">
-          <label class="form-label">Hostname *</label>
+          <label class="form-label">
+            Hostname *
+            <span class="tip">
+              <span class="tip-icon">?</span>
+              <span class="tip-text">OS hostname of the device. Used for SSH and Headscale enrollment. Should match the system's actual hostname.</span>
+            </span>
+          </label>
           <input name="hostname" class="form-control" placeholder="rpi-puzzle-01" required />
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Role *</label>
+          <label class="form-label">
+            Role *
+            <span class="tip">
+              <span class="tip-icon">?</span>
+              <span class="tip-text">Free-text functional role label. Used for grouping, filtering and playbook targeting. e.g. kiosk, videowall, mini-orchestrator.</span>
+            </span>
+          </label>
           <input name="role" class="form-control" placeholder="rpi-puzzle"
                  list="device-roles-list" required />
           <span class="form-hint">e.g. rpi-puzzle, mini-orchestrator</span>
@@ -212,7 +230,13 @@
           </datalist>
         </div>
         <div class="form-group">
-          <label class="form-label">Ring</label>
+          <label class="form-label">
+            Ring
+            <span class="tip">
+              <span class="tip-icon">?</span>
+              <span class="tip-text">Deployment ring: 0 = Lab (first updates), 1 = Canary (early adopters), 2 = Production. Lower rings receive updates first.</span>
+            </span>
+          </label>
           <select name="ring" class="form-control">
             <option value="">— none —</option>
             <option value="0">0 — Lab</option>
@@ -223,7 +247,13 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Profile</label>
+          <label class="form-label">
+            Profile
+            <span class="tip">
+              <span class="tip-icon">?</span>
+              <span class="tip-text">Software profile that defines which components (packages, binaries) this device should run. Leave blank to inherit the zone's assigned profile.</span>
+            </span>
+          </label>
           <select name="profile_id" class="form-control">
             <option value="">— inherit zone default —</option>
             {% for p in profiles %}

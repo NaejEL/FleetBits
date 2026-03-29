@@ -3,15 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fleet Manager — Sign In</title>
+  <title>FleetBits — Sign In</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet.css') }}">
 </head>
 <body class="login-page">
 
 <div class="login-box">
   <div class="login-brand">
-    <span class="brand-icon">⬡</span>
-    <span class="brand-name">Fleet Manager</span>
+    <img src="{{ url_for('static', filename='img/logo_transparent.png') }}" alt="FleetBits" class="login-brand-logo" />
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}

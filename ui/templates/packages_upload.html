@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Package — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <a href="{{ url_for('packages.packages_browser') }}">Packages</a>
+  › <strong>Upload .deb</strong>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">UPLOAD .DEB PACKAGE</h1>
+  <p class="page-sub">Raw package upload with metadata preview before import to repository.</p>
+</div>
+
+<section class="card-section">
+  <h2 class="section-title">STEP 1 — Upload & Preview</h2>
+
+  <form method="post" enctype="multipart/form-data" id="upload-form" class="stack-sm">
+    <div class="form-grid two-col">
+      <label>
+        Target repository (optional)
+        <select name="repo">
+          <option value="">Auto / later</option>
+          {% for repo in repos %}
+            <option value="{{ repo }}">{{ repo }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Distribution (optional)
+        <input type="text" name="distribution" placeholder="bookworm">
+      </label>
+      <label>
+        Architecture hint (optional)
+        <input type="text" name="architecture" placeholder="amd64">
+      </label>
+      <label class="inline-check">
+        <input type="checkbox" name="is_overwrite">
+        Allow overwrite
+      </label>
+    </div>
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Drop deb file here">
+      <p><strong>Drag & drop a .deb here</strong> or click to choose a file</p>
+      <input id="deb-file" type="file" name="deb_file" accept=".deb" required>
+      <p id="file-name" class="text-muted"></p>
+    </div>
+
+    <div>
+      <button type="submit" class="btn btn-primary">Upload & Extract Metadata</button>
+    </div>
+  </form>
+</section>
+
+{% if upload_result %}
+<section class="card-section" style="margin-top: 1rem;">
+  <h2 class="section-title">STEP 2 — Metadata Preview</h2>
+
+  <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+    <span class="pkg-badge dev">File: {{ upload_result.filename }}</span>
+    <span class="pkg-badge staging">Size: {{ upload_result.size }} bytes</span>
+    <span class="pkg-badge prod">Valid: {{ 'yes' if upload_result.validation.is_valid else 'no' }}</span>
+  </div>
+
+  {% if upload_result.validation.warnings %}
+    <div class="alert warning">
+      <strong>Warnings:</strong>
+      <ul>
+        {% for warning in upload_result.validation.warnings %}
+          <li>{{ warning }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key, value in upload_result.metadata.items() %}
+        <tr>
+          <td><code>{{ key }}</code></td>
+          <td>{{ value }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:1rem;">Optional import step</h3>
+  <form method="post" action="{{ url_for('packages.packages_upload_import') }}" class="stack-sm">
+    <input type="hidden" name="package_reference" value="{{ upload_result.package_reference or upload_result.filename }}">
+
+    <label>
+      Repository
+      <select name="repo" required>
+        <option value="">Select repo…</option>
+        {% for repo in repos %}
+          <option value="{{ repo }}">{{ repo }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="inline-check">
+      <input type="checkbox" name="force">
+      Force replace
+    </label>
+
+    <div>
+      <button type="submit" class="btn btn-warning">Import into repository</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const dropzone = document.getElementById('dropzone');
+  const input = document.getElementById('deb-file');
+  const fileName = document.getElementById('file-name');
+
+  function showName() {
+    if (input.files && input.files.length > 0) {
+      fileName.textContent = 'Selected: ' + input.files[0].name;
+    } else {
+      fileName.textContent = '';
+    }
+  }
+
+  if (dropzone && input) {
+    dropzone.addEventListener('click', () => input.click());
+    dropzone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        input.click();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach((evt) => {
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((evt) => {
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+      });
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        input.files = e.dataTransfer.files;
+        showName();
+      }
+    });
+
+    input.addEventListener('change', showName);
+  }
+})();
+</script>
+{% endblock %}

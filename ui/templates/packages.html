@@ -12,6 +12,12 @@
   <h1 class="page-title">APTLY PACKAGE REPOSITORY</h1>
   <p class="page-sub">Browse .deb packages published in each environment channel.
     Promote packages by uploading to <strong>dev</strong> first, then through staging to prod via the deployment pipeline.</p>
+  <div style="margin-top: 1rem; display: flex; gap: 0.75rem;">
+    <a href="{{ url_for('packages.packages_upload') }}" class="btn btn-primary">Upload .deb</a>
+    <a href="{{ url_for('packages.gpg_keys_management') }}" class="btn btn-secondary">Manage GPG Keys</a>
+    <a href="{{ url_for('packages.packages_by_distribution') }}" class="btn btn-secondary">View by Distribution</a>
+    <a href="{{ url_for('packages.packages_promotion') }}" class="btn btn-secondary">Promotion Workflow</a>
+  </div>
 </div>
 
 {% if repos %}

@@ -2,72 +2,132 @@
 
 {% block title %}Deployment Center — Fleet Manager{% endblock %}
 
-{% block breadcrumb %}Deployment Center{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Deployments</strong>
+{% endblock %}
 
 {% block topbar_actions %}
   <a href="#new-deployment" class="btn btn-primary btn-sm">+ New Deployment</a>
 {% endblock %}
 
 {% block content %}
+{# Map rollout_mode string → ring number for progress bars #}
+{# ring-0 → 0, ring-1 → 1, ring-2 → 2, anything else → -1 #}
+
 <!-- Active rollouts -->
 <section class="card-section">
   <h2 class="section-title">ACTIVE ROLLOUT</h2>
   {% if active_deployments %}
     {% for dep in active_deployments %}
+      {# Derive ring number from rollout_mode #}
+      {% set dep_ring = -1 %}
+      {% if dep.rollout_mode == 'ring-0' %}{% set dep_ring = 0 %}
+      {% elif dep.rollout_mode == 'ring-1' %}{% set dep_ring = 1 %}
+      {% elif dep.rollout_mode == 'ring-2' %}{% set dep_ring = 2 %}
+      {% endif %}
+
       <div class="rollout-card">
         <div class="rollout-header">
-          <span class="rollout-title">{{ dep.component }} {{ dep.version }}</span>
+          <span class="rollout-title">{{ dep.artifact_type | upper }} — {{ dep.artifact_ref | e }}</span>
           {% if dep.change_id %}
-            <span class="badge">{{ dep.change_id }}</span>
+            <span class="badge">{{ dep.change_id | e }}</span>
           {% endif %}
           <span class="rollout-status badge-status-{{ dep.status }}">
-            {%- if dep.status == 'in_progress' %}<svg class="icon"><use href="#icon-arrows-path"/></svg> live
+            {%- if dep.status == 'deploying' %}<svg class="icon"><use href="#icon-arrows-path"/></svg> deploying
+            {%- elif dep.status == 'scheduled' %}<svg class="icon icon-muted"><use href="#icon-clock"/></svg> scheduled
             {%- elif dep.status == 'pending' %}<svg class="icon icon-muted"><use href="#icon-clock"/></svg> pending
             {%- else %}{{ dep.status }}{% endif %}
           </span>
+          {% if dep.rollout_mode %}
+            <span class="badge badge-ring">{{ dep.rollout_mode | e }}</span>
+          {% endif %}
         </div>
 
-        <!-- Ring progress bars -->
+        <!-- Ring progress bars — filled/active/waiting based on current rollout_mode and status -->
+        {% if dep_ring >= 0 %}
         <div class="ring-bars">
-          {% set rings = [
-            {'label': 'Ring 0  Lab', 'ring': 0},
-            {'label': 'Ring 1  Canary', 'ring': 1},
-            {'label': 'Ring 2  Prod', 'ring': 2},
+          {% set ring_defs = [
+            (0, 'Ring 0 — Lab'),
+            (1, 'Ring 1 — Canary'),
+            (2, 'Ring 2 — Prod'),
           ] %}
-          {% for r in rings %}
+          {% for r_num, r_label in ring_defs %}
+            {% if dep_ring > r_num %}
+              {# This ring is fully done (previous to current) #}
+              {% set bar_class = 'ring-done' %}
+              {% set bar_width = 100 %}
+              {% set bar_label = '100% done' %}
+            {% elif dep_ring == r_num %}
+              {# This is the active ring #}
+              {% if dep.status == 'success' %}
+                {% set bar_class = 'ring-done' %}
+                {% set bar_width = 100 %}
+                {% set bar_label = '100% done' %}
+              {% elif dep.status == 'deploying' %}
+                {% set bar_class = 'ring-active' %}
+                {% set bar_width = 60 %}
+                {% set bar_label = 'deploying…' %}
+              {% else %}
+                {# pending / scheduled / failed #}
+                {% set bar_class = 'ring-waiting' %}
+                {% set bar_width = 0 %}
+                {% set bar_label = dep.status %}
+              {% endif %}
+            {% else %}
+              {# Future ring — not reached yet #}
+              {% set bar_class = 'ring-waiting' %}
+              {% set bar_width = 0 %}
+              {% set bar_label = 'waiting' %}
+            {% endif %}
             <div class="ring-row">
-              <span class="ring-label">{{ r.label }}</span>
+              <span class="ring-label">{{ r_label }}</span>
               <div class="ring-bar-wrap">
-                <div class="ring-bar-fill
-                  {%- if dep.target_ring > r.ring %} ring-done
-                  {%- elif dep.target_ring == r.ring %} ring-active
-                  {%- else %} ring-waiting{% endif %}"
-                  style="width:{% if dep.target_ring > r.ring %}100{% elif dep.target_ring == r.ring %}{{ dep.progress_pct | default(0) }}{% else %}0{% endif %}%"></div>
+                <div class="ring-bar-fill {{ bar_class }}" style="width:{{ bar_width }}%"></div>
               </div>
-              <span class="ring-pct">
-                {%- if dep.target_ring > r.ring %}100% done
-                {%- elif dep.target_ring == r.ring %}{{ dep.progress_pct | default(0) }}% live
-                {%- else %}0% wait{% endif %}
-              </span>
+              <span class="ring-pct">{{ bar_label }}</span>
             </div>
           {% endfor %}
         </div>
+        {% endif %}
 
         <div class="rollout-actions">
+          {# Trigger button — available when pending/scheduled #}
+          {% if dep.status in ('pending', 'scheduled') %}
           <form method="post" action="{{ url_for('deployments.trigger', deployment_id=dep.deployment_id) }}"
-                style="display:inline">
-            <button type="submit" class="btn btn-primary btn-sm"
-                    onclick="return confirm('Trigger deployment {{ dep.deployment_id }}?')">
-              Promote → Ring {{ (dep.target_ring | int) + 1 }}
+                style="display:inline"
+                onsubmit="return confirm({{ ('Trigger deployment %s?' % dep.deployment_id) | tojson }})">
+            <button type="submit" class="btn btn-primary btn-sm">
+              <svg class="icon"><use href="#icon-arrow-up"/></svg>
+              Trigger {{ dep.rollout_mode | e }}
             </button>
           </form>
+          {% endif %}
+
+          {# Promote button — available when ring-0 or ring-1 succeeded #}
+          {% if dep.status == 'success' and dep.rollout_mode in ('ring-0', 'ring-1') %}
+            {% set next_ring = 'ring-1' if dep.rollout_mode == 'ring-0' else 'ring-2' %}
+          <form method="post" action="{{ url_for('deployments.promote', deployment_id=dep.deployment_id) }}"
+                style="display:inline"
+                onsubmit="return confirm({{ ('Promote %s to %s?' % (dep.artifact_ref, next_ring)) | tojson }})">
+            <button type="submit" class="btn btn-primary btn-sm">
+              <svg class="icon"><use href="#icon-arrow-up"/></svg>
+              Promote → {{ next_ring }}
+            </button>
+          </form>
+          {% endif %}
+
+          {# Rollback button — available when succeeded or failed #}
+          {% if dep.status in ('success', 'failed') %}
           <form method="post" action="{{ url_for('deployments.rollback', deployment_id=dep.deployment_id) }}"
-                style="display:inline">
-            <button type="submit" class="btn btn-danger btn-sm"
-                    onclick="return confirm('Roll back {{ dep.deployment_id }}?')">
-              Rollback ring {{ dep.target_ring }}
+                style="display:inline"
+                onsubmit="return confirm({{ ('Roll back %s?' % dep.deployment_id) | tojson }})">
+            <button type="submit" class="btn btn-danger btn-sm">
+              <svg class="icon"><use href="#icon-arrows-path"/></svg>
+              Rollback
             </button>
           </form>
+          {% endif %}
         </div>
       </div>
     {% endfor %}
@@ -81,41 +141,43 @@
   <h2 class="section-title">NEW DEPLOYMENT</h2>
   <form method="post" action="{{ url_for('deployments.new_deployment') }}" class="form-grid">
     <div class="form-row">
-      <label for="dep-component">Component</label>
-      <input id="dep-component" type="text" name="component" placeholder="e.g. zone-controller" required>
-    </div>
-    <div class="form-row">
-      <label>Artifact</label>
+      <label>Artifact type</label>
       <div class="radio-group">
         <label><input type="radio" name="artifact_type" value="deb" checked> deb</label>
         <label><input type="radio" name="artifact_type" value="git"> git</label>
       </div>
     </div>
     <div class="form-row">
-      <label for="dep-version">Version</label>
-      <input id="dep-version" type="text" name="version" placeholder="e.g. 2.7.0" required>
+      <label for="dep-artifact-ref">Artifact ref
+        <span class="tooltip-badge" title="For deb: package version (e.g. 2.7.0). For git: commit SHA or tag.">?</span>
+      </label>
+      <input id="dep-artifact-ref" type="text" name="artifact_ref" placeholder="e.g. 2.7.0 or v2.7.0" required>
     </div>
     <div class="form-row">
       <label>Start at ring</label>
       <div class="radio-group">
-        <label><input type="radio" name="target_ring" value="0" checked> Ring 0</label>
-        <label><input type="radio" name="target_ring" value="1"> Ring 1</label>
-        <label><input type="radio" name="target_ring" value="2"> Ring 2</label>
+        <label><input type="radio" name="rollout_mode" value="ring-0" checked> Ring 0 (Lab)</label>
+        <label><input type="radio" name="rollout_mode" value="ring-1"> Ring 1 (Canary)</label>
+        <label><input type="radio" name="rollout_mode" value="ring-2"> Ring 2 (Prod)</label>
       </div>
     </div>
     {% if sites %}
       <div class="form-row">
-        <label for="dep-site">Site (optional)</label>
+        <label for="dep-site">Site scope
+          <span class="tooltip-badge" title="Restricts this deployment to a single site. Leave blank for all sites.">?</span>
+        </label>
         <select id="dep-site" name="site_id">
           <option value="">— All sites —</option>
           {% for site in sites %}
-            <option value="{{ site.site_id }}">{{ site.name }}</option>
+            <option value="{{ site.site_id | e }}">{{ site.name | e }}</option>
           {% endfor %}
         </select>
       </div>
     {% endif %}
     <div class="form-row">
-      <label for="dep-change-id">Change ID</label>
+      <label for="dep-change-id">Change ID
+        <span class="tooltip-badge" title="Optional change ticket reference, e.g. CHG-2026-0042.">?</span>
+      </label>
       <input id="dep-change-id" type="text" name="change_id" placeholder="CHG-2026-xxxx">
     </div>
     <div class="form-row form-row--submit">
@@ -132,29 +194,37 @@
       <thead>
         <tr>
           <th>Status</th>
-          <th>Component</th>
-          <th>Version</th>
+          <th>Mode</th>
+          <th>Artifact</th>
           <th>Change ID</th>
-          <th>Date</th>
+          <th>Started</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for dep in recent_deployments %}
           <tr>
+            <td>{{ dep.status | e }}</td>
+            <td>{{ dep.rollout_mode | e }}</td>
+            <td>{{ dep.artifact_type | e }} / {{ dep.artifact_ref | e }}</td>
+            <td>{{ dep.change_id | default('—') | e }}</td>
+            <td>{{ dep.started_at | default('') }}</td>
             <td>
-              {{ dep.status }}
-            </td>
-            <td>{{ dep.component }}</td>
-            <td>{{ dep.version }}</td>
-            <td>{{ dep.change_id | default('—') }}</td>
-            <td>{{ dep.created_at | default('') }}</td>
-            <td>
+              {% if dep.status in ('success', 'failed') %}
               <form method="post" action="{{ url_for('deployments.rollback', deployment_id=dep.deployment_id) }}"
-                    style="display:inline">
-                <button type="submit" class="btn btn-ghost btn-xs"
-                        onclick="return confirm('Roll back?')">Rollback</button>
+                    style="display:inline"
+                    onsubmit="return confirm('Roll back?')">
+                <button type="submit" class="btn btn-ghost btn-xs">Rollback</button>
               </form>
+              {% if dep.status == 'success' and dep.rollout_mode in ('ring-0', 'ring-1') %}
+                {% set next_ring = 'ring-1' if dep.rollout_mode == 'ring-0' else 'ring-2' %}
+              <form method="post" action="{{ url_for('deployments.promote', deployment_id=dep.deployment_id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm({{ ('Promote to %s?' % next_ring) | tojson }})">
+                <button type="submit" class="btn btn-ghost btn-xs">Promote → {{ next_ring }}</button>
+              </form>
+              {% endif %}
+              {% endif %}
             </td>
           </tr>
         {% endfor %}

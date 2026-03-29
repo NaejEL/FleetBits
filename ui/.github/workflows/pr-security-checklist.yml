@@ -1,0 +1,42 @@
+name: PR Security Checklist
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-security-checklist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required security checklist items are checked
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || "";
+
+            const required = [
+              "I reviewed authorization scope impact (tenant/site boundaries)",
+              "I reviewed authentication/session/token impact",
+              "I reviewed secret handling (no secrets committed, no insecure defaults)",
+              "I reviewed input validation and query injection risk",
+              "I reviewed telemetry/package/reverse-proxy exposure impact (if applicable)",
+              "I added or updated automated tests for security-relevant behavior",
+              "I verified CI security jobs are passing (dependency, secret, vuln scans)",
+            ];
+
+            const missing = required.filter((item) => {
+              const escaped = item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const re = new RegExp(`- \\[(x|X)\\]\\s*${escaped}`);
+              return !re.test(body);
+            });
+
+            if (missing.length > 0) {
+              core.setFailed(
+                "Required security checklist items are not all checked:\n" +
+                  missing.map((m) => `- ${m}`).join("\n")
+              );
+            }

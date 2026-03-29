@@ -2,7 +2,10 @@
 
 {% block title %}Audit Log — Fleet Manager{% endblock %}
 
-{% block breadcrumb %}Audit Log{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Audit Log</strong>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">

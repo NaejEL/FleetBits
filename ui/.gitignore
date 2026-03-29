@@ -34,3 +34,8 @@ Thumbs.db
 # Test artifacts
 .pytest_cache/
 *.log
+
+# LLM agent working documents — local only, not for distribution
+GUIDELINES.md
+FEATURE_ROADMAP.md
+SECURITY_ROADMAP.md
