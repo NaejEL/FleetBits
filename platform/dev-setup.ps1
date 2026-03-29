@@ -355,7 +355,7 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 Write-Host ""
 Write-Host "  Fleet UI        http://localhost             (admin / $($secrets.OPERATOR_PASSWORD))"
 Write-Host "  Fleet API docs  http://localhost:8000/docs"
-Write-Host "  Grafana         http://localhost:3000        (admin / $($secrets.GRAFANA_ADMIN_PASSWORD))"
+Write-Host "  Grafana         http://localhost/grafana"
 Write-Host "  Semaphore       http://localhost/semaphore"
 Write-Host "  Prometheus      http://localhost:9090"
 Write-Host ""

@@ -40,8 +40,8 @@ sync_device_acl() {
   TEMP_ACL="$(mktemp)"
   trap "rm -f '$TEMP_ACL'" EXIT
   
-  if ! curl -sf -H "Authorization: Bearer $FLEET_OPERATOR_TOKEN" \
-       "$API_URL/v1/devices/mqtt/acl" -o "$TEMP_ACL" 2>/dev/null; then
+    if ! curl -sf -H "Authorization: Bearer $FLEET_OPERATOR_TOKEN" \
+      "$API_URL/api/v1/devices/mqtt/acl" -o "$TEMP_ACL" 2>/dev/null; then
     echo "[mosquitto-acl] WARNING: Failed to fetch ACL from API" >&2
     return 1
   fi

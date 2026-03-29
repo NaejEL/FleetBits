@@ -165,7 +165,7 @@ The script generates all secrets, writes every config file, and starts the full 
 |-----|---------|-------|
 | http://localhost | Fleet UI | Login: `admin` / your `OPERATOR_PASSWORD` |
 | http://localhost:8000/docs | Fleet API + Swagger | |
-| http://localhost:3000 | Grafana | Same credentials as Fleet UI (after SSO is configured) |
+| http://localhost/grafana | Grafana | Routed through Caddy with Fleet UI SSO (no direct :3000 login in dev) |
 | http://localhost/semaphore | Semaphore | Routed through Caddy (dev/prod parity) |
 | http://localhost/alertmanager | Alertmanager | Basic auth via `ALERTMANAGER_BASIC_AUTH_*` in `secrets.env` |
 | http://localhost:9090 | Prometheus | |

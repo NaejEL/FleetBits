@@ -145,15 +145,16 @@ services:
   # ─── Edge Simulator ─────────────────────────────────────────────────────────
   edge-sim:
     build:
-      context: ./edge-sim
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/edge-sim/Dockerfile
     container_name: fleetbits-edge-sim
     environment:
-      FLEET_API_URL: "http://fleet-api:8000"
-      FLEET_API_TOKEN: "${FLEET_AGENT_TOKEN:-device-ci-token}"
-      FLEET_DEVICE_ID: "ci-device-001"
-      FLEET_SITE_ID: "ci-site"
-      FLEET_ZONE_ID: "ci-zone"
+      EDGE_SIM_API_URL: "http://fleet-api:8000"
+      EDGE_SIM_CADDY_URL: "http://caddy:80"
+      EDGE_SIM_OPERATOR_PASSWORD: "${OPERATOR_PASSWORD}"
+      EDGE_SIM_DEVICE_ID: "ci-device-001"
+      EDGE_SIM_SITE_ID: "ci-site"
+      EDGE_SIM_ZONE_ID: "ci-zone"
     # No external ports; internal health check via /state endpoint
     expose:
       - "18080"

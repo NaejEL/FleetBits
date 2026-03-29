@@ -15,7 +15,7 @@ systemd_exporter_install_dir: "/usr/local/bin"
 systemd_exporter_service_file: "/etc/systemd/system/systemd_exporter.service"
 
 # Bind address — use loopback so only Alloy (local) can scrape it
-systemd_exporter_listen_address: "0.0.0.0:9558"
+systemd_exporter_listen_address: "127.0.0.1:9558"
 
 # Alloy scrape config snippet path — Alloy will pick this up and push rules to Prometheus
 alloy_config_dir: "/etc/fleet/alloy"
