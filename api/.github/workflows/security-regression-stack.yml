@@ -274,7 +274,7 @@ jobs:
             -f docker-compose.yml \
             -f docker-compose.ci.override.yml \
             exec -T fleet-api \
-            pytest -q -m security tests/test_security_*.py
+            pytest -q -m security tests
 
       - name: Dump compose logs on failure
         if: failure()
