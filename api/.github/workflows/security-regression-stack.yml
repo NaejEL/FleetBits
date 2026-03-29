@@ -243,7 +243,6 @@ jobs:
           import json
           import time
           import urllib.request
-          import sys
 
           url = 'http://edge-sim:18080/state'
           deadline = time.time() + 180
@@ -260,8 +259,7 @@ jobs:
               last = {'error': str(exc)}
             time.sleep(2)
 
-          print(f'warning: edge-sim bootstrap timed out, continuing: {last}', file=sys.stderr)
-          raise SystemExit(0)
+          raise SystemExit(f'edge-sim bootstrap timed out: {last}')
           PY
 
       - name: Run security regression suite
