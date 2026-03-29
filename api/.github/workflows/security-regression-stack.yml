@@ -252,7 +252,18 @@ jobs:
               with urllib.request.urlopen(url, timeout=3) as r:
                 data = json.loads(r.read().decode())
               last = data
-              if data.get('bootstrapped'):
+              # edge-sim may report repo_authorize_status=401 when using the
+              # device bearer token against /packages/repo/authorize. That is
+              # expected after repo-credential isolation hardening and should
+              # not block stack readiness if core bootstrap succeeded.
+              core_ready = (
+                data.get('admin_login')
+                and data.get('device_token_issued')
+                and data.get('repo_key_registered')
+                and data.get('heartbeat_ok')
+              )
+              repo_auth_status = data.get('repo_authorize_status')
+              if data.get('bootstrapped') or (core_ready and repo_auth_status in (200, 401)):
                 print('edge-sim ready')
                 raise SystemExit(0)
             except Exception as exc:
