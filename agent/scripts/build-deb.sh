@@ -128,7 +128,7 @@ build_alloy_from_source() {
     -v "${SOURCE_BUILD_DIR}:/src/alloy" \
     -w /src/alloy \
     "${build_image}" \
-    sh -lc 'set -euo pipefail; GOOS=linux GOARCH=arm GOARM=7 RELEASE_BUILD=1 GO_TAGS="netgo embedalloyui promtail_journal_enabled" make alloy'
+    bash -lc 'set -euo pipefail; GOOS=linux GOARCH=arm GOARM=7 RELEASE_BUILD=1 GO_TAGS="netgo embedalloyui promtail_journal_enabled" make alloy'
 
   install -m 755 "${SOURCE_BUILD_DIR}/build/alloy" "${alloy_bin}"
 }
