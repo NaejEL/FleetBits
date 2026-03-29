@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, arm64]
+        arch: [amd64, arm64, armhf]
 
     steps:
       - name: Checkout
@@ -28,6 +28,9 @@ jobs:
 
       - name: Install zip (for Alloy download)
         run: sudo apt-get install -y unzip
+
+      - name: Verify Docker availability for source-build fallbacks
+        run: docker version
 
       - name: Determine version
         id: version

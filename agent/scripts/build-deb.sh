@@ -42,6 +42,8 @@ BUILD_DIR="${REPO_ROOT}/build"
 DIST_DIR="${REPO_ROOT}/dist"
 mkdir -p "${BUILD_DIR}" "${DIST_DIR}"
 
+SOURCE_BUILD_DIR="${BUILD_DIR}/alloy-source-v${ALLOY_VERSION}"
+
 # Architecture mapping: Debian arch → Alloy release arch
 declare -A ARCH_MAP=(
   [amd64]="linux-amd64"
@@ -49,12 +51,87 @@ declare -A ARCH_MAP=(
   [armhf]="linux-armv7"
 )
 
-TARGET_ARCH="${TARGET_ARCH:-}"
+TARGET_ARCH="${TARGET_ARCH:-${1:-}}"
 if [ -n "${TARGET_ARCH}" ]; then
   BUILD_ARCHES=("${TARGET_ARCH}")
 else
   BUILD_ARCHES=("amd64" "arm64" "armhf")
 fi
+
+download_alloy_release_binary() {
+  local deb_arch="$1"
+  local alloy_bin="$2"
+  local alloy_arch="$3"
+
+  local candidate_arches=("${alloy_arch}")
+  if [ "${deb_arch}" = "armhf" ]; then
+    candidate_arches=("linux-armv7" "linux-armhf" "linux-arm")
+  fi
+
+  local candidate_arch
+  for candidate_arch in "${candidate_arches[@]}"; do
+    local alloy_url="https://github.com/grafana/alloy/releases/download/v${ALLOY_VERSION}/alloy-${candidate_arch}.zip"
+    echo "Downloading Alloy ${ALLOY_VERSION} (${candidate_arch})..."
+
+    if ! curl -fsSL "${alloy_url}" -o "${alloy_bin}.zip"; then
+      continue
+    fi
+
+    local bin_in_zip
+    bin_in_zip=$(unzip -Z1 "${alloy_bin}.zip" | grep '^alloy-' | head -n1 || true)
+    if [ -z "${bin_in_zip}" ]; then
+      rm -f "${alloy_bin}.zip"
+      continue
+    fi
+
+    unzip -p "${alloy_bin}.zip" "${bin_in_zip}" > "${alloy_bin}"
+    rm -f "${alloy_bin}.zip"
+    chmod +x "${alloy_bin}"
+    return 0
+  done
+
+  return 1
+}
+
+build_alloy_from_source() {
+  local deb_arch="$1"
+  local alloy_bin="$2"
+
+  if [ "${deb_arch}" != "armhf" ]; then
+    echo "ERROR: source-build fallback is only implemented for armhf" >&2
+    exit 1
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "ERROR: docker is required to build Alloy from source for ${deb_arch}" >&2
+    exit 1
+  fi
+
+  if [ ! -d "${SOURCE_BUILD_DIR}/.git" ]; then
+    rm -rf "${SOURCE_BUILD_DIR}"
+    echo "Cloning Grafana Alloy v${ALLOY_VERSION} source for ${deb_arch} build fallback..."
+    git clone --depth 1 --branch "v${ALLOY_VERSION}" \
+      https://github.com/grafana/alloy.git \
+      "${SOURCE_BUILD_DIR}"
+  fi
+
+  local build_image
+  build_image=$(grep -m1 'grafana/alloy-build-image:' "${SOURCE_BUILD_DIR}/Dockerfile" | awk '{print $2}')
+  if [ -z "${build_image}" ]; then
+    echo "ERROR: could not determine Grafana Alloy build image for v${ALLOY_VERSION}" >&2
+    exit 1
+  fi
+
+  echo "Building Grafana Alloy v${ALLOY_VERSION} from source for ${deb_arch} using ${build_image}..."
+  docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "${SOURCE_BUILD_DIR}:/src/alloy" \
+    -w /src/alloy \
+    "${build_image}" \
+    sh -lc 'set -euo pipefail; GOOS=linux GOARCH=arm GOARM=7 RELEASE_BUILD=1 GO_TAGS="netgo embedalloyui promtail_journal_enabled" make alloy'
+
+  install -m 755 "${SOURCE_BUILD_DIR}/build/alloy" "${alloy_bin}"
+}
 
 # ── Build one .deb per architecture ──────────────────────────────────────────
 for DEB_ARCH in "${BUILD_ARCHES[@]}"; do
@@ -67,38 +144,15 @@ for DEB_ARCH in "${BUILD_ARCHES[@]}"; do
   # Download Alloy binary for this arch
   ALLOY_BIN="${BUILD_DIR}/alloy-${DEB_ARCH}"
   if [ ! -f "${ALLOY_BIN}" ]; then
-    CANDIDATE_ARCHES=("${ALLOY_ARCH}")
-    if [ "${DEB_ARCH}" = "armhf" ]; then
-      CANDIDATE_ARCHES=("linux-armv7" "linux-armhf" "linux-arm")
-    fi
-
-    DOWNLOADED=0
-    for CANDIDATE_ARCH in "${CANDIDATE_ARCHES[@]}"; do
-      ALLOY_URL="https://github.com/grafana/alloy/releases/download/v${ALLOY_VERSION}/alloy-${CANDIDATE_ARCH}.zip"
-      echo "Downloading Alloy ${ALLOY_VERSION} (${CANDIDATE_ARCH})..."
-
-      if ! curl -fsSL "${ALLOY_URL}" -o "${ALLOY_BIN}.zip"; then
-        continue
+    if ! download_alloy_release_binary "${DEB_ARCH}" "${ALLOY_BIN}" "${ALLOY_ARCH}"; then
+      if [ "${DEB_ARCH}" = "armhf" ]; then
+        echo "No official Grafana Alloy armhf asset found for v${ALLOY_VERSION}; falling back to source build."
+        build_alloy_from_source "${DEB_ARCH}" "${ALLOY_BIN}"
+      else
+        echo "ERROR: failed to download Alloy ${ALLOY_VERSION} for ${DEB_ARCH}" >&2
+        exit 1
       fi
-
-      BIN_IN_ZIP=$(unzip -Z1 "${ALLOY_BIN}.zip" | grep '^alloy-' | head -n1 || true)
-      if [ -z "${BIN_IN_ZIP}" ]; then
-        rm -f "${ALLOY_BIN}.zip"
-        continue
-      fi
-
-      unzip -p "${ALLOY_BIN}.zip" "${BIN_IN_ZIP}" > "${ALLOY_BIN}"
-      rm -f "${ALLOY_BIN}.zip"
-      DOWNLOADED=1
-      break
-    done
-
-    if [ "${DOWNLOADED}" -ne 1 ]; then
-      echo "ERROR: failed to download Alloy ${ALLOY_VERSION} for ${DEB_ARCH}" >&2
-      exit 1
     fi
-
-    chmod +x "${ALLOY_BIN}"
   fi
 
   # Make scripts executable
