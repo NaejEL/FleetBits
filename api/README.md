@@ -1,8 +1,8 @@
-﻿# FleetBits API
+# FleetBits API
 
 REST API for the FleetBits fleet management platform.
 
-> **Operator?** You interact with this API through the [Fleet UI](https://github.com/NaejEL/FleetBits-ui) — you don''t need to use it directly. This README is for developers contributing to or integrating with the API.
+> **Operator?** You interact with this API through the Fleet UI web app — you don't need to use it directly. This README is for developers contributing to or integrating with the API.
 
 Built with **FastAPI** + **SQLAlchemy 2 (async)** + **Alembic** + **PostgreSQL 16**.
 
@@ -72,6 +72,23 @@ Interactive API docs: **http://localhost:8000/docs**
 
 ```bash
 pytest tests/ -v
+```
+
+### Security contributor guardrails
+
+Run hooks locally before opening a PR (required for consistent security checks):
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+For security regressions, validate through the containerized path (no ad-hoc host package installs):
+
+```bash
+cd ../FleetBits-platform/docker
+docker compose --env-file ../secrets.env exec -T fleet-api sh -lc "cd /app && python -m pytest -q -m security tests/test_security_*.py -rs"
 ```
 
 ---

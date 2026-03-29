@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.user import VALID_ROLES
 
@@ -68,7 +68,7 @@ class ApiKeyCreate(BaseModel):
     key_name: str
     role: str = "ci_bot"
     site_scope: str | None = None
-    expires_days: int | None = None  # None = never expires
+    expires_days: int = Field(default=90, ge=1, le=365)
 
     @field_validator("role")
     @classmethod

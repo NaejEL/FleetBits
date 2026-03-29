@@ -14,3 +14,4 @@ class Profile(Base):
     baseline_stack: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
     zones: Mapped[list["Zone"]] = relationship("Zone", back_populates="profile", lazy="select")
+    devices: Mapped[list["Device"]] = relationship("Device", back_populates="profile", lazy="select")

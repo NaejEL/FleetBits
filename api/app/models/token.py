@@ -31,3 +31,23 @@ class ProvisionToken(Base):
     used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
     device: Mapped["Device | None"] = relationship("Device", back_populates="provision_tokens")
+
+
+class RevokedJWT(Base):
+    """Revoked JWT registry keyed by jti.
+
+    Stores explicit revocations for currently-issued tokens.  Combined with
+    User.token_valid_after for efficient bulk invalidation.
+    """
+
+    __tablename__ = "revoked_jwt"
+
+    # JWT ID claim
+    jti: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Token subject (username)
+    sub: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revoked_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)

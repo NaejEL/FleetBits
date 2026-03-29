@@ -35,3 +35,10 @@ class User(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    # Any JWT with iat < token_valid_after is treated as stale/revoked.
+    token_valid_after: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    grafana_user_id: Mapped[int | None] = mapped_column(
+        nullable=True
+    )

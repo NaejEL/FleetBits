@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -10,6 +11,18 @@ from app.services.audit import write_audit_event
 from app.services.token import TokenPayload
 
 router = APIRouter(prefix="/zones", tags=["zones"])
+
+
+def _is_site_scoped_user(user: TokenPayload) -> bool:
+    return user.role != "admin" and bool(user.site_scope)
+
+
+async def _get_scoped_zone(db: AsyncSession, zone_id: str, user: TokenPayload) -> Zone | None:
+    q = select(Zone).where(Zone.zone_id == zone_id)
+    if _is_site_scoped_user(user):
+        q = q.where(Zone.site_id == user.site_scope)
+    result = await db.execute(q)
+    return result.scalar_one_or_none()
 
 
 @router.get("", response_model=list[ZoneRead])
@@ -24,7 +37,7 @@ async def list_zones(
         q = q.where(Zone.site_id == site_id)
     if profile_id:
         q = q.where(Zone.profile_id == profile_id)
-    if user.role == "site_manager" and user.site_scope:
+    if _is_site_scoped_user(user):
         q = q.where(Zone.site_id == user.site_scope)
     result = await db.execute(q)
     return result.scalars().all()
@@ -36,11 +49,9 @@ async def get_zone(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
-    zone = await db.get(Zone, zone_id)
+    zone = await _get_scoped_zone(db, zone_id, user)
     if zone is None:
         raise HTTPException(status_code=404, detail="Zone not found")
-    if user.role == "site_manager" and user.site_scope != zone.site_id:
-        raise HTTPException(status_code=403, detail="Access denied")
     return zone
 
 
@@ -51,9 +62,15 @@ async def create_zone(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
+    if _is_site_scoped_user(user) and user.site_scope != body.site_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     zone = Zone(**body.model_dump())
     db.add(zone)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail=f"Zone {body.zone_id} already exists") from exc
     await write_audit_event(
         db,
         action="zone.created",
@@ -73,9 +90,10 @@ async def update_zone(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    zone = await db.get(Zone, zone_id)
+    zone = await _get_scoped_zone(db, zone_id, user)
     if zone is None:
         raise HTTPException(status_code=404, detail="Zone not found")
+
     for key, val in body.model_dump(exclude_none=True).items():
         setattr(zone, key, val)
     await write_audit_event(
@@ -97,9 +115,10 @@ async def delete_zone(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    zone = await db.get(Zone, zone_id)
+    zone = await _get_scoped_zone(db, zone_id, user)
     if zone is None:
         raise HTTPException(status_code=404, detail="Zone not found")
+
     await db.delete(zone)
     await write_audit_event(
         db,
