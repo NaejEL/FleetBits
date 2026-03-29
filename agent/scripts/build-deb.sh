@@ -124,7 +124,6 @@ build_alloy_from_source() {
 
   echo "Building Grafana Alloy v${ALLOY_VERSION} from source for ${deb_arch} using ${build_image}..."
   docker run --rm \
-    -u "$(id -u):$(id -g)" \
     -v "${SOURCE_BUILD_DIR}:/src/alloy" \
     -w /src/alloy \
     "${build_image}" \
