@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   pr-security-checklist:
+    if: ${{ github.actor != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - name: Validate required security checklist items are checked
