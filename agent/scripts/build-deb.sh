@@ -67,11 +67,37 @@ for DEB_ARCH in "${BUILD_ARCHES[@]}"; do
   # Download Alloy binary for this arch
   ALLOY_BIN="${BUILD_DIR}/alloy-${DEB_ARCH}"
   if [ ! -f "${ALLOY_BIN}" ]; then
-    ALLOY_URL="https://github.com/grafana/alloy/releases/download/v${ALLOY_VERSION}/alloy-${ALLOY_ARCH}.zip"
-    echo "Downloading Alloy ${ALLOY_VERSION} (${ALLOY_ARCH})..."
-    curl -fsSL "${ALLOY_URL}" -o "${ALLOY_BIN}.zip"
-    unzip -p "${ALLOY_BIN}.zip" "alloy-${ALLOY_ARCH}" > "${ALLOY_BIN}"
-    rm "${ALLOY_BIN}.zip"
+    CANDIDATE_ARCHES=("${ALLOY_ARCH}")
+    if [ "${DEB_ARCH}" = "armhf" ]; then
+      CANDIDATE_ARCHES=("linux-armv7" "linux-armhf" "linux-arm")
+    fi
+
+    DOWNLOADED=0
+    for CANDIDATE_ARCH in "${CANDIDATE_ARCHES[@]}"; do
+      ALLOY_URL="https://github.com/grafana/alloy/releases/download/v${ALLOY_VERSION}/alloy-${CANDIDATE_ARCH}.zip"
+      echo "Downloading Alloy ${ALLOY_VERSION} (${CANDIDATE_ARCH})..."
+
+      if ! curl -fsSL "${ALLOY_URL}" -o "${ALLOY_BIN}.zip"; then
+        continue
+      fi
+
+      BIN_IN_ZIP=$(unzip -Z1 "${ALLOY_BIN}.zip" | grep '^alloy-' | head -n1 || true)
+      if [ -z "${BIN_IN_ZIP}" ]; then
+        rm -f "${ALLOY_BIN}.zip"
+        continue
+      fi
+
+      unzip -p "${ALLOY_BIN}.zip" "${BIN_IN_ZIP}" > "${ALLOY_BIN}"
+      rm -f "${ALLOY_BIN}.zip"
+      DOWNLOADED=1
+      break
+    done
+
+    if [ "${DOWNLOADED}" -ne 1 ]; then
+      echo "ERROR: failed to download Alloy ${ALLOY_VERSION} for ${DEB_ARCH}" >&2
+      exit 1
+    fi
+
     chmod +x "${ALLOY_BIN}"
   fi
 
