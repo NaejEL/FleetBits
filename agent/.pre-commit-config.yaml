@@ -16,3 +16,9 @@ repos:
     hooks:
       - id: gitleaks
 
+  # GitHub Actions workflow linter — catches invalid step structure, bad expressions
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.4
+    hooks:
+      - id: actionlint
+

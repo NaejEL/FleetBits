@@ -119,7 +119,7 @@ jobs:
             -d "{\"Snapshots\": [{\"Component\": \"main\", \"Name\": \"${SNAPSHOT}\"}], \"Signing\": ${SIGNING}}" \
             "${APTLY_API_URL}/api/publish/dev/bookworm"
 
-          - name: Create GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/fleet-agent_${{ steps.version.outputs.VERSION }}_*.deb
