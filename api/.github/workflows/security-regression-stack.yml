@@ -193,15 +193,16 @@ jobs:
           EOF
 
       - name: Pre-build edge-sim container image
+        working-directory: FleetBits-platform
         shell: bash
         run: |
           set -euo pipefail
-          # Build with explicit docker build to avoid Docker Buildx/Bake
-          # treating the Dockerfile subdirectory as a named context
+          # Build from the platform repo root so Dockerfile/context paths are
+          # always local and do not depend on outer workspace layout.
           docker build \
             --tag fleetbits-edge-sim:ci \
-            --file FleetBits-platform/docker/edge-sim/Dockerfile \
-            FleetBits-platform
+            --file docker/edge-sim/Dockerfile \
+            .
 
       - name: Start integration stack
         working-directory: FleetBits-platform/docker
