@@ -86,24 +86,52 @@ download_alloy_release_binary() {
 
 download_vector_release_binary() {
   local vector_bin="$1"
-  local vector_url="https://github.com/vectordotdev/vector/releases/download/v${VECTOR_VERSION}/vector-${VECTOR_VERSION}-armv7-unknown-linux-gnueabihf.tar.gz"
   local extract_dir="${BUILD_DIR}/vector-armhf-extract"
-  local extracted_root="${extract_dir}/vector-${VECTOR_VERSION}-armv7-unknown-linux-gnueabihf"
+  local downloaded_url=""
+  local candidate_urls=(
+    "https://github.com/vectordotdev/vector/releases/download/v${VECTOR_VERSION}/vector-${VECTOR_VERSION}-armv7-unknown-linux-gnueabihf.tar.gz"
+    "https://github.com/vectordotdev/vector/releases/download/v${VECTOR_VERSION}/vector-${VECTOR_VERSION}-arm-unknown-linux-gnueabi.tar.gz"
+  )
+  local vector_url
+  local archive_member
+  local extracted_vector_path
 
-  echo "Downloading Vector ${VECTOR_VERSION} (armv7-unknown-linux-gnueabihf)..."
-  curl -fsSL "${vector_url}" -o "${vector_bin}.tar.gz"
+  for vector_url in "${candidate_urls[@]}"; do
+    echo "Attempting Vector download: ${vector_url}"
+    if curl -fsSL "${vector_url}" -o "${vector_bin}.tar.gz"; then
+      downloaded_url="${vector_url}"
+      break
+    fi
+  done
 
-  rm -rf "${extract_dir}"
-  mkdir -p "${extract_dir}"
-  tar -xzf "${vector_bin}.tar.gz" -C "${extract_dir}"
-  rm -f "${vector_bin}.tar.gz"
-
-  if [ ! -f "${extracted_root}/bin/vector" ]; then
-    echo "ERROR: could not find Vector binary in ${vector_url}" >&2
+  if [ -z "${downloaded_url}" ]; then
+    echo "ERROR: failed to download a supported Vector armhf archive for v${VECTOR_VERSION}" >&2
+    echo "Tried URLs:" >&2
+    printf '  - %s\n' "${candidate_urls[@]}" >&2
     exit 1
   fi
 
-  cp "${extracted_root}/bin/vector" "${vector_bin}"
+  rm -rf "${extract_dir}"
+  mkdir -p "${extract_dir}"
+
+  archive_member=$(tar -tzf "${vector_bin}.tar.gz" | grep '/bin/vector$' | head -n1 || true)
+
+  tar -xzf "${vector_bin}.tar.gz" -C "${extract_dir}"
+  rm -f "${vector_bin}.tar.gz"
+
+  if [ -n "${archive_member}" ] && [ -f "${extract_dir}/${archive_member}" ]; then
+    extracted_vector_path="${extract_dir}/${archive_member}"
+  else
+    extracted_vector_path=$(find "${extract_dir}" -type f -name vector | head -n1 || true)
+  fi
+
+  if [ -z "${extracted_vector_path}" ] || [ ! -f "${extracted_vector_path}" ]; then
+    echo "ERROR: could not find Vector binary after extracting ${downloaded_url}" >&2
+    find "${extract_dir}" -maxdepth 4 -type f | sed 's/^/  extracted: /' >&2 || true
+    exit 1
+  fi
+
+  cp "${extracted_vector_path}" "${vector_bin}"
   chmod +x "${vector_bin}"
 }
 
