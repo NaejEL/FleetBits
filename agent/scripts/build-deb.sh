@@ -115,21 +115,29 @@ build_alloy_from_source() {
       "${SOURCE_BUILD_DIR}"
   fi
 
-  local build_image
-  build_image=$(grep -m1 -o 'grafana/alloy-build-image:[^ ]*' "${SOURCE_BUILD_DIR}/Dockerfile")
-  if [ -z "${build_image}" ]; then
-    echo "ERROR: could not determine Grafana Alloy build image for v${ALLOY_VERSION}" >&2
-    exit 1
-  fi
+  local build_tag="fleetbits-alloy-armhf-build:v${ALLOY_VERSION}"
+  local container_id
 
-  echo "Building Grafana Alloy v${ALLOY_VERSION} from source for ${deb_arch} using ${build_image}..."
-  docker run --rm \
-    -v "${SOURCE_BUILD_DIR}:/src/alloy" \
-    -w /src/alloy \
-    "${build_image}" \
-    bash -lc 'set -euo pipefail; GOOS=linux GOARCH=arm GOARM=7 RELEASE_BUILD=1 GO_TAGS="netgo embedalloyui promtail_journal_enabled" make alloy'
+  echo "Building Grafana Alloy v${ALLOY_VERSION} from source for ${deb_arch} via the upstream Dockerfile build stage..."
+  DOCKER_BUILDKIT=1 docker build \
+    --file "${SOURCE_BUILD_DIR}/Dockerfile" \
+    --target build \
+    --build-arg TARGETOS=linux \
+    --build-arg TARGETARCH=arm \
+    --build-arg TARGETVARIANT=v7 \
+    --build-arg RELEASE_BUILD=1 \
+    --build-arg VERSION="v${ALLOY_VERSION}" \
+    --tag "${build_tag}" \
+    "${SOURCE_BUILD_DIR}"
 
-  install -m 755 "${SOURCE_BUILD_DIR}/build/alloy" "${alloy_bin}"
+  container_id=$(docker create "${build_tag}")
+  trap 'if [ -n "${container_id:-}" ]; then docker rm -f "${container_id}" >/dev/null 2>&1 || true; fi' RETURN
+  docker cp "${container_id}:/src/alloy/build/alloy" "${alloy_bin}"
+  docker rm -f "${container_id}" >/dev/null 2>&1 || true
+  container_id=""
+  trap - RETURN
+
+  chmod +x "${alloy_bin}"
 }
 
 # ── Build one .deb per architecture ──────────────────────────────────────────
