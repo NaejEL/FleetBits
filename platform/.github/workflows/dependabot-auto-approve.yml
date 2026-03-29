@@ -21,11 +21,13 @@ jobs:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Wait for CI checks to pass
-        uses: actions/github-script@v8
+        id: wait_checks
+        uses: actions/github-script@v7
         with:
           script: |
             const pr = context.payload.pull_request;
             const { owner, repo } = context.repo;
+            core.setOutput('ready', 'false');
             
             // Wait for up to 10 minutes for checks to complete
             for (let i = 0; i < 60; i++) {
@@ -44,24 +46,27 @@ jobs:
                 .some(check => check.conclusion === 'failure');
               
               if (anyFailed) {
-                core.setFailed('Security checks failed');
-                process.exit(1);
+                core.info('At least one required check failed; skipping auto-approve for this run.');
+                return;
               }
               
               if (allPassed && checks.data.check_runs.length > 0) {
-                break;
+                core.setOutput('ready', 'true');
+                return;
               }
               
               if (i === 59) {
                 core.warning('Checks still pending after 10 minutes');
-                break;
+                return;
               }
               
               await new Promise(resolve => setTimeout(resolve, 10000));
             }
 
       - name: Approve PR
-        uses: actions/github-script@v8
+        if: steps.wait_checks.outputs.ready == 'true'
+        continue-on-error: true
+        uses: actions/github-script@v7
         with:
           script: |
             github.rest.pulls.createReview({
@@ -73,6 +78,8 @@ jobs:
             })
 
       - name: Enable auto-merge
+        if: steps.wait_checks.outputs.ready == 'true'
+        continue-on-error: true
         run: |
           gh pr merge --squash --auto "${{ github.event.pull_request.number }}"
         env:
