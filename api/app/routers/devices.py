@@ -166,6 +166,12 @@ async def provision_device(
     temp_bearer_token = generate_device_token()
     device.device_token_hash = hash_token(temp_bearer_token)
 
+    # Generate a separate repo token scoped exclusively to APT package downloads.
+    # Kept isolated from FLEET_AGENT_TOKEN so a leaked APT credential cannot be
+    # used to make fleet API calls (least-privilege).
+    repo_token = generate_device_token()
+    device.repo_token_hash = hash_token(repo_token)
+
     return DeviceIdentity(
         DEVICE_ID=device_id,
         SITE_ID=site_id,
@@ -173,6 +179,7 @@ async def provision_device(
         DEVICE_ROLE=device.role,
         PROFILE=device.profile_id,
         FLEET_AGENT_TOKEN=temp_bearer_token,
+        REPO_BASIC_TOKEN=repo_token,
         FLEET_METRICS_URL=metrics_url,
         FLEET_LOGS_URL=logs_url,
         HEADSCALE_PREAUTH_KEY=None,  # To be filled by operator portal

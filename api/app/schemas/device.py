@@ -83,6 +83,10 @@ class DeviceIdentity(BaseModel):
     DEVICE_ROLE: str
     PROFILE: str | None = None
     FLEET_AGENT_TOKEN: str
+    # Separate credential scoped exclusively to APT repository access.
+    # Stored separately from FLEET_AGENT_TOKEN so APT auth compromise does not
+    # grant access to the fleet API and vice versa.
+    REPO_BASIC_TOKEN: str
     FLEET_METRICS_URL: str
     FLEET_LOGS_URL: str
     HEADSCALE_PREAUTH_KEY: str | None = None

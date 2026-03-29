@@ -28,6 +28,8 @@ class Device(Base):
     ring: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # SHA-256 hex digest of the long-lived opaque device token (set at first-boot enrollment)
     device_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    # SHA-256 hex digest of the dedicated APT repository token (separate from fleet bearer token)
+    repo_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     # Device-managed SSH public key used for repository client authorization workflows.
     repo_public_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     repo_key_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
