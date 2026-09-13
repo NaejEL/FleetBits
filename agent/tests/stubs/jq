@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Minimal jq stub: covers the two invocation shapes used by firstboot.sh.
+set -uo pipefail
+
+if [ "${1:-}" = "-n" ]; then
+  # jq -n --arg public_key X --arg key_fingerprint Y '{...}'
+  shift
+  declare -A args=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --arg) args["$2"]="$3"; shift 3 ;;
+      *) shift ;;
+    esac
+  done
+  printf '{"public_key":"%s","key_fingerprint":"%s"}\n' \
+    "${args[public_key]:-}" "${args[key_fingerprint]:-}"
+  exit 0
+fi
+
+# jq -r '.field' FILE
+filter=""
+file=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -r) shift ;;
+    .*) filter="${1#.}"; shift ;;
+    *) file="$1"; shift ;;
+  esac
+done
+grep -E "\"${filter}\"[[:space:]]*:" "${file}" \
+  | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/'

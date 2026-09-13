@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+
+  # Secret scanning — catches tokens, API keys, credentials before they reach git history
+  #
+  # `entry` overrides the upstream one, which is
+  # `gitleaks protect --verbose --redact --staged`: that scans the git INDEX, so
+  # it reports "0 commits scanned / Passed" on a working tree where nothing has
+  # been staged, no matter what the files contain. `pre-commit run gitleaks
+  # --files <path>` did not help either — the upstream hook sets
+  # pass_filenames: false, so the file list was accepted and then ignored.
+  # `detect --no-git --source .` reads the CONTENT of every file under the
+  # repository root, tracked or not, staged or not, which is what a pre-commit
+  # secret scan is supposed to guarantee for a change that carries device
+  # credentials.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        entry: gitleaks detect --no-git --redact --verbose --source .
+        pass_filenames: false
+
+  # GitHub Actions workflow linter — catches invalid step structure, bad expressions
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.4
+    hooks:
+      - id: actionlint

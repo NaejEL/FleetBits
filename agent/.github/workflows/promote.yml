@@ -1,0 +1,86 @@
+name: Promote fleet-agent
+
+# Manual promotion: dev → staging, or staging → prod.
+# The snapshot currently published in the source environment is re-published
+# in the target environment. An optional snapshot name overrides auto-detection.
+#
+# Required repository secrets:
+#   APTLY_API_URL       — https://repo.<your-domain>
+#   APTLY_GPG_KEY_ID    — (optional) GPG key short ID for signed repos
+#
+# GitHub environment protection rules are recommended for "prod":
+#   Settings → Environments → prod → Required reviewers
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: 'Snapshot name to promote (leave blank to use latest from source env)'
+        required: false
+        type: string
+      from_env:
+        description: 'Source environment'
+        required: true
+        type: choice
+        options: [dev, staging]
+        default: dev
+      to_env:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [staging, prod]
+        default: staging
+
+jobs:
+  promote:
+    name: Promote ${{ inputs.from_env }} → ${{ inputs.to_env }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.to_env }}   # triggers GitHub environment protection rules
+
+    steps:
+      - name: Resolve snapshot to promote
+        id: snap
+        env:
+          APTLY_API_URL: ${{ secrets.APTLY_API_URL }}
+        run: |
+          if [ -n "${{ inputs.snapshot }}" ]; then
+            echo "SNAPSHOT=${{ inputs.snapshot }}" >> "${GITHUB_OUTPUT}"
+          else
+            # Discover the snapshot currently live in the source environment
+            SNAP=$(curl -sf \
+              "${APTLY_API_URL}/api/publish/${{ inputs.from_env }}/bookworm" \
+              | jq -r '.Sources[0].Name')
+            [ -n "${SNAP}" ] || { echo "ERROR: could not read snapshot from ${{ inputs.from_env }}" >&2; exit 1; }
+            echo "SNAPSHOT=${SNAP}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Promote snapshot to ${{ inputs.to_env }}
+        env:
+          APTLY_API_URL: ${{ secrets.APTLY_API_URL }}
+        run: |
+          GPG_KEY="${{ secrets.APTLY_GPG_KEY_ID }}"
+          if [ -n "${GPG_KEY}" ]; then
+            SIGNING="{\"GpgKey\": \"${GPG_KEY}\"}"
+          else
+            SIGNING='{"Skip": true}'
+          fi
+
+          curl -sf -X PUT \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"Snapshots\": [{\"Component\": \"main\", \"Name\": \"${{ steps.snap.outputs.SNAPSHOT }}\"}],
+              \"Signing\": ${SIGNING}
+            }" \
+            "${APTLY_API_URL}/api/publish/${{ inputs.to_env }}/bookworm"
+
+      - name: Write job summary
+        run: |
+          echo "### Promotion Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Snapshot | \`${{ steps.snap.outputs.SNAPSHOT }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Route | \`${{ inputs.from_env }}\` → \`${{ inputs.to_env }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Triggered by | @${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Devices in the **${{ inputs.to_env }}** ring will receive the update on their next \`apt-get upgrade\`." >> "$GITHUB_STEP_SUMMARY"

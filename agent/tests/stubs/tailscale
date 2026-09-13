@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# tailscale stub: records the call so tests can assert the Headscale branch
+# was NOT taken when HEADSCALE_PREAUTH_KEY is empty.
+set -uo pipefail
+echo "tailscale $*" >> "${STUB_LOG}"
+exit 0

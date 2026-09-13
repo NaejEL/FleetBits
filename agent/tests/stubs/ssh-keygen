@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# ssh-keygen stub: generates placeholder key material, never real crypto.
+# Handles the three invocation shapes firstboot.sh uses, including the combined
+# short flags (-lf FILE, -yf FILE).
+set -uo pipefail
+
+echo "ssh-keygen $*" >> "${STUB_LOG}"
+
+mode="generate"
+keyfile=""
+expect_file="no"
+for arg in "$@"; do
+  if [ "${expect_file}" = "yes" ]; then
+    keyfile="${arg}"
+    expect_file="no"
+    continue
+  fi
+  case "${arg}" in
+    -lf) mode="fingerprint"; expect_file="yes" ;;
+    -yf) mode="public-from-private"; expect_file="yes" ;;
+    -l)  mode="fingerprint" ;;
+    -y)  mode="public-from-private" ;;
+    -f)  expect_file="yes" ;;
+  esac
+done
+
+if [ -z "${keyfile}" ]; then
+  echo "ssh-keygen stub: no -f argument in: $*" >&2
+  exit 2
+fi
+
+case "${mode}" in
+  fingerprint)
+    echo "256 SHA256:stub-fingerprint fleet-repo (ED25519)"
+    ;;
+  public-from-private)
+    echo "ssh-ed25519 AAAAstubpublickey fleet-repo"
+    ;;
+  generate)
+    printf 'STUB PRIVATE KEY\n' > "${keyfile}"
+    printf 'ssh-ed25519 AAAAstubpublickey fleet-repo\n' > "${keyfile}.pub"
+    ;;
+esac

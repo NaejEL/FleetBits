@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Recording curl stub for the fleet-agent bats suite.
+# Understands only the invocations the agent scripts make.
+set -uo pipefail
+
+output=""
+url=""
+prev=""
+for arg in "$@"; do
+  case "${prev}" in
+    -o) output="${arg}" ;;
+    -X) : ;;
+  esac
+  case "${arg}" in
+    http://*|https://*) url="${arg}" ;;
+  esac
+  prev="${arg}"
+done
+
+echo "curl ${url}" >> "${STUB_LOG}"
+printf '%s\n' "$@" >> "${STUB_LOG}.curl-args"
+
+status="${FLEET_TEST_HTTP_STATUS:-200}"
+
+case "${url}" in
+  */provision)
+    if [ -n "${output}" ] && [ -n "${FLEET_TEST_PROVISION_RESPONSE:-}" ]; then
+      cat "${FLEET_TEST_PROVISION_RESPONSE}" > "${output}"
+    fi
+    ;;
+  *)
+    if [ -n "${output}" ] && [ "${output}" != "/dev/null" ]; then
+      : > "${output}"
+    fi
+    ;;
+esac
+
+printf '%s' "${status}"
