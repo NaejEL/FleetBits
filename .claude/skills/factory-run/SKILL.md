@@ -9,9 +9,9 @@ Déroule un cycle complet de l'usine logicielle FleetBits sur `$ARGUMENTS`. Suis
 
 ## Contexte permanent du dépôt
 
-`/home/naej/repos/FleetBits` **n'est pas un dépôt git** : c'est une racine de travail contenant quatre dépôts git indépendants — `FleetBits-api` (Python/FastAPI, Alembic, pytest), `FleetBits-ui` (Python/Flask), `FleetBits-agent` (shell, systemd, Alloy/Vector), `FleetBits-platform` (docker-compose, Ansible, scripts) — plus les documents transverses `README.md`, `GUIDELINES.md`, `FEATURE_ROADMAP.md`, `SECURITY_ROADMAP.md`, `AUDIT-vibecode.md`.
+`/home/naej/repos/FleetBits` est **un dépôt git unique** — le monorepo FleetBits. Ses quatre composants sont des dossiers de premier niveau : `api/` (Python/FastAPI, Alembic, pytest), `ui/` (Python/Flask), `agent/` (shell, systemd, Alloy/Vector), `platform/` (docker-compose, Ansible, scripts). Les documents transverses (`README.md`, `GUIDELINES.md`, `FEATURE_ROADMAP.md`, `SECURITY_ROADMAP.md`, `AUDIT-vibecode.md`), l'usine (`.claude/`, `ci/`), les specs (`specs/`) et les workflows GitHub (`.github/workflows/`) vivent à la racine.
 
-Toute commande `git` s'exécute avec `git -C /home/naej/repos/FleetBits/<dépôt>`. Un cycle peut légitimement toucher plusieurs dépôts à la fois — c'est le cas courant pour les contrats entre l'API et l'agent. Les specs et les journaux vivent à la racine (`specs/`, `factory-logs/`), hors de tout dépôt git.
+Un seul arbre de travail, un seul `git status`, un seul historique : plus de `git -C <dépôt>`, plus de branche à synchroniser d'un dépôt à l'autre. Un cycle qui touche à la fois l'API et l'agent est un changement ordinaire, testable en une seule fois. Les journaux `factory-logs/` sont ignorés par git.
 
 ## 1. Entrée
 
@@ -41,8 +41,8 @@ Sinon, traiter `$ARGUMENTS` comme un **besoin** exprimé par l'utilisateur, et c
 Lancer le sous-agent `factory-builder` (outil `Agent`, `subagent_type: "factory-builder"`, **contexte frais**) en lui passant :
 
 - le chemin absolu de la spec approuvée ;
-- la liste des dépôts touchés, telle que la spec les nomme ;
-- la consigne d'exécuter build et tests de chaque dépôt touché et de ne rendre la main que s'ils passent.
+- la liste des composants touchés (`api/`, `ui/`, `agent/`, `platform/`), telle que la spec les nomme ;
+- la consigne d'exécuter build et tests de chaque composant touché et de ne rendre la main que s'ils passent.
 
 ## 4. Phase Verify — boucle de correction, 3 itérations maximum
 
@@ -51,21 +51,21 @@ Tenir un compteur d'itérations, initialisé à 1.
 1. Lancer un sous-agent `factory-verifier` (`subagent_type: "factory-verifier"`, **contexte vierge, indépendant de celui du Builder** — un nouvel agent à chaque itération, jamais une reprise du précédent) avec le chemin absolu de la spec. Récupérer le bloc JSON en fin de sa réponse.
 2. Si `verdict` vaut `APPROVED` **et** `tests_passed` vaut `true` : sortir de la boucle, le cycle est un succès. Aller à l'étape 5.
 3. Sinon, relancer `factory-builder` (contexte frais) avec le chemin de la spec **et la liste complète des `issues` du Verifier** — `file`, `severity`, `description` de chacune, sans en omettre ni en résumer une — et la consigne de corriger chaque issue sans régresser sur les critères déjà satisfaits. Incrémenter le compteur, puis reprendre à l'étape 1 avec un **nouveau** Verifier.
-4. Après la **3e** itération non approuvée, **échouer explicitement** : publier les issues restantes, le nombre d'itérations consommées et l'état de l'arbre de travail de chaque dépôt. **Ne jamais approuver par épuisement** ni déclarer le cycle réussi parce que les issues restantes semblent mineures.
+4. Après la **3e** itération non approuvée, **échouer explicitement** : publier les issues restantes, le nombre d'itérations consommées et l'état de l'arbre de travail. **Ne jamais approuver par épuisement** ni déclarer le cycle réussi parce que les issues restantes semblent mineures.
 5. **Un Verifier muet n'est pas un Verifier satisfait.** Si le Builder ou le Verifier meurt (erreur d'API, connexion coupée, agent interrompu) ou rend une sortie inexploitable au lieu de son bloc JSON, le relancer **une fois à l'identique**. Si le second essai échoue lui aussi, **échouer explicitement** en le disant : « Le vérificateur n'a rendu aucun verdict exploitable après deux tentatives ; le code produit n'est pas vérifié. » Ne jamais traiter l'absence de verdict comme une approbation, ne jamais consommer une itération du compteur au profit d'un agent mort, ne jamais passer à la suite sur un verdict absent. Un cycle qui livre du code non vérifié parce que son vérificateur est tombé est pire qu'un cycle qui échoue.
 
 ## 5. Rapport final
 
 Produire un rapport structuré contenant :
 
-- **Fichiers modifiés**, dépôt par dépôt, obtenus par :
+- **Fichiers modifiés**, obtenus par un seul appel :
 
   ```bash
-  for r in FleetBits-api FleetBits-ui FleetBits-agent FleetBits-platform; do
-    echo "===== $r"; git -C "/home/naej/repos/FleetBits/$r" status --short
-  done
+  git -C /home/naej/repos/FleetBits status --short
   ```
 
-- **Résultat des tests** : pour chaque dépôt touché, la commande exécutée et son exit code (`FleetBits-api` : `./.venv/bin/python -m pytest` ; `FleetBits-ui` : idem si un `tests/` existe ; `FleetBits-agent` : `shellcheck` + `bats` ; `FleetBits-platform` : `docker compose config -q` + `ansible-playbook --syntax-check` + `ansible-lint`).
+  Les regrouper par composant (`api/`, `ui/`, `agent/`, `platform/`, racine) dans le rapport.
+
+- **Résultat des tests** : pour chaque composant touché, la commande exécutée et son exit code (`api/` : `./.venv/bin/python -m pytest` ; `ui/` : idem si un `tests/` existe ; `agent/` : `./scripts/run-tests.sh`, soit `shellcheck` + `bats` ; `platform/` : `./scripts/run-tests.sh`, soit `docker compose config -q` + `ansible-playbook --syntax-check` + `ansible-lint` + `pytest` + `shellcheck`).
 - **Verdict** final du Verifier et nombre d'itérations consommées.
-- **Prochaine action suggérée** : revue du diff par l'utilisateur, dépôt par dépôt (`git -C /home/naej/repos/FleetBits/<dépôt> diff`), puis commit et branche à sa main. **Ne jamais commiter à sa place** — les quatre dépôts sont indépendants et le découpage des commits lui appartient.
+- **Prochaine action suggérée** : revue du diff par l'utilisateur (`git -C /home/naej/repos/FleetBits diff`), puis commit et branche à sa main. **Ne jamais commiter à sa place** — le découpage des commits lui appartient.

@@ -8,7 +8,7 @@
       "Read(./**/.pytest_cache/**)",
       "Read(./**/*.egg-info/**)",
       "Read(./**/htmlcov/**)",
-      "Read(./FleetBits-agent/dist/**)",
+      "Read(./agent/dist/**)",
       "Read(./factory-logs/**)",
       "Read(./.git/objects/**)",
       "Read(./**/.git/objects/**)"

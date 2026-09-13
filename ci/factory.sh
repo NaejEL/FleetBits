@@ -83,9 +83,9 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 127
 fi
 
-# Liste blanche d'outils : outils de base de l'usine, git sur les quatre dépôts,
+# Liste blanche d'outils : outils de base de l'usine, git sur le monorepo,
 # et les commandes réellement utilisées par la stack FleetBits
-# (python3/venv pour -api et -ui, docker pour shellcheck, bats, ansible-lint,
+# (python3/venv pour api/ et ui/, docker pour shellcheck, bats, ansible-lint,
 # compose, et bash -n pour les scripts de -agent et -platform).
 ALLOWED_TOOLS='Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python3 *),Bash(pip *),Bash(pytest *),Bash(ruff *),Bash(bandit *),Bash(alembic *),Bash(docker *),Bash(bash -n *),Bash(shellcheck *),Bash(ansible-lint *),Bash(ansible-playbook *)'
 

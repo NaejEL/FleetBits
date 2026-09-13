@@ -1,11 +1,12 @@
-# Racine de travail FleetBits — cette racine n'est pas un dépôt git.
-# Ce fichier documente et protège les artefacts de l'usine logicielle au cas où
-# la racine serait un jour versionnée, et sert de référence aux outils qui le lisent.
+# Monorepo FleetBits — racine du dépôt git unique.
+# Les .gitignore de api/, ui/, agent/ et platform/ complètent celui-ci pour leur
+# propre sous-arbre.
 
 # Journaux d'exécution headless de l'usine
 factory-logs/
 
-# Environnements virtuels Python de travail (venv du dépôt -platform, hors dépôt)
+# Environnements virtuels Python (celui de platform/ vit à la racine : son
+# .gitignore n'ignore pas .venv/)
 .venv/
 .venv-platform/
 
