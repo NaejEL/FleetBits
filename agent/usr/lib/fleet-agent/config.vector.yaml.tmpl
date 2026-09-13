@@ -1,12 +1,12 @@
 # /usr/lib/fleet-agent/config.vector.yaml.tmpl
 # ─────────────────────────────────────────────────────────────────────────────
 # Vector configuration template for armhf devices.
-# ALL_CAPS_PLACEHOLDER values are substituted by generate-config.sh.
+# Every ALL-CAPS placeholder slot below is substituted, in a single pass, by generate-config.sh.
 # This file is installed by the fleet-agent .deb; do not edit it directly.
 # To change the active config re-run: /usr/lib/fleet-agent/generate-config.sh
 # ─────────────────────────────────────────────────────────────────────────────
 
-data_dir: /var/lib/fleet-agent/vector
+data_dir: VECTOR_DATA_DIR_PLACEHOLDER
 
 sources:
   host_metrics:
@@ -30,6 +30,8 @@ transforms:
       .tags.device_role = "DEVICE_ROLE_PLACEHOLDER"
       .tags.device_id = "DEVICE_ID_PLACEHOLDER"
       .tags.profile = "PROFILE_PLACEHOLDER"
+      .tags.environment = "ENVIRONMENT_PLACEHOLDER"
+      .tags.ring = "RING_PLACEHOLDER"
 
   add_log_labels:
     type: remap
@@ -41,6 +43,8 @@ transforms:
       .device_role = "DEVICE_ROLE_PLACEHOLDER"
       .device_id = "DEVICE_ID_PLACEHOLDER"
       .profile = "PROFILE_PLACEHOLDER"
+      .environment = "ENVIRONMENT_PLACEHOLDER"
+      .ring = "RING_PLACEHOLDER"
       if exists(._SYSTEMD_UNIT) && !is_null(._SYSTEMD_UNIT) {
         .service = ._SYSTEMD_UNIT
       } else if exists(.SYSLOG_IDENTIFIER) && !is_null(.SYSLOG_IDENTIFIER) {
@@ -77,6 +81,8 @@ sinks:
       device_role: "{{ device_role }}"
       device_id: "{{ device_id }}"
       profile: "{{ profile }}"
+      environment: "{{ environment }}"
+      ring: "{{ ring }}"
       service: "{{ service }}"
       host: "{{ host }}"
       source_type: "{{ source_type }}"

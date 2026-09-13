@@ -1,7 +1,7 @@
 // /usr/lib/fleet-agent/config.alloy.tmpl
 // ─────────────────────────────────────────────────────────────────────────────
 // Grafana Alloy configuration template.
-// ALL_CAPS_PLACEHOLDER values are substituted by generate-config.sh.
+// Every ALL-CAPS placeholder slot below is substituted, in a single pass, by generate-config.sh.
 // This file is installed by the fleet-agent .deb; do not edit it directly.
 // To change the active config re-run: /usr/lib/fleet-agent/generate-config.sh
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +89,14 @@ prometheus.relabel "add_labels" {
     target_label = "profile"
     replacement  = "PROFILE_PLACEHOLDER"
   }
+  rule {
+    target_label = "environment"
+    replacement  = "ENVIRONMENT_PLACEHOLDER"
+  }
+  rule {
+    target_label = "ring"
+    replacement  = "RING_PLACEHOLDER"
+  }
 }
 
 // ===========================================================
@@ -145,6 +153,9 @@ loki.process "add_labels" {
       zone        = "ZONE_ID_PLACEHOLDER",
       device_id   = "DEVICE_ID_PLACEHOLDER",
       device_role = "DEVICE_ROLE_PLACEHOLDER",
+      profile     = "PROFILE_PLACEHOLDER",
+      environment = "ENVIRONMENT_PLACEHOLDER",
+      ring        = "RING_PLACEHOLDER",
     }
   }
 }
