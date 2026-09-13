@@ -16,20 +16,25 @@
 
 set -euo pipefail
 
-IDENTITY_FILE="/etc/fleet/device-identity.conf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=identity-lib.sh
+. "${SCRIPT_DIR}/identity-lib.sh"
 
-if [ ! -f "${IDENTITY_FILE}" ]; then
-  echo "ERROR: ${IDENTITY_FILE} not found" >&2
-  exit 1
-fi
+# FLEET_IDENTITY_FILE relocates the file so the bats suite can run this script
+# on a fixture.
+#
+# Scope, stated plainly: none of them selects a format, a route or a variant —
+# there is one identity format and one provisioning path. What they do select
+# is WHERE this root-scoped script reads secrets from and writes them to. On a
+# device those paths are fixed by the systemd units, so setting them already
+# requires root; the hooks widen no boundary. Said here so the next reader
+# weighs them as root-scoped relocations, not as harmless path tweaks.
+IDENTITY_FILE="${FLEET_IDENTITY_FILE:-/etc/fleet/device-identity.conf}"
 
-# shellcheck source=/dev/null
-source "${IDENTITY_FILE}"
-
-if [ -z "${FLEET_API_URL:-}" ] || [ -z "${FLEET_AGENT_TOKEN:-}" ] || [ -z "${DEVICE_ID:-}" ]; then
-  echo "ERROR: FLEET_API_URL, FLEET_AGENT_TOKEN, DEVICE_ID must be set in ${IDENTITY_FILE}" >&2
-  exit 1
-fi
+# Parsed, never evaluated: the file is data (see identity-lib.sh).
+fleet_identity_parse "${IDENTITY_FILE}" || exit 1
+fleet_identity_require FLEET_API_URL FLEET_AGENT_TOKEN DEVICE_ID || exit 1
 
 # Collect system state
 UPTIME_SECONDS=$(awk '{print int($1)}' /proc/uptime)
@@ -50,8 +55,8 @@ HTTP_STATUS=$(curl -sf \
   --retry-delay 1 \
   -o /dev/null \
   -w "%{http_code}" \
-  -X POST "${FLEET_API_URL}/api/v1/devices/${DEVICE_ID}/heartbeat" \
-  -H "Authorization: Bearer ${FLEET_AGENT_TOKEN}" \
+  -X POST "${FLEET_ID_FLEET_API_URL}/api/v1/devices/${FLEET_ID_DEVICE_ID}/heartbeat" \
+  -H "Authorization: Bearer ${FLEET_ID_FLEET_AGENT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "${PAYLOAD}" 2>/dev/null) || true
 

@@ -86,12 +86,14 @@ FleetBits-agent/
 ├── etc/fleet/
 │   └── device-identity.conf.example    identity template
 ├── usr/lib/fleet-agent/
+│   ├── identity-lib.sh                 strict, inert parser/writer for device-identity.conf
 │   ├── config.alloy.tmpl               Alloy template for amd64/arm64
 │   ├── config.vector.yaml.tmpl         Vector template for armhf
 │   ├── generate-config.sh              reads identity -> writes the active runtime config
 │   ├── run-telemetry.sh                launches Alloy or Vector
 │   ├── heartbeat.sh                    heartbeat sender
 │   └── firstboot.sh                    SD card replacement self-enrollment
+├── tests/                              bats suite (see ./scripts/run-tests.sh)
 ├── lib/systemd/system/
 │   ├── fleet-agent.service
 │   ├── fleet-heartbeat.timer
@@ -160,6 +162,21 @@ Enable and run pre-commit hooks before opening a PR:
 pip install pre-commit
 pre-commit install
 pre-commit run --all-files
+
+# `--all-files` feeds the hooks "every file git TRACKS". A file that is only in
+# the working tree is invisible to the file-driven hooks, so a new script, test
+# or workflow escapes actionlint, check-yaml and trailing-whitespace until the
+# day it is committed. Sweep the real working set — tracked and not-yet-tracked,
+# .gitignore honoured — with:
+pre-commit run --files $(git ls-files -co --exclude-standard)
+
+# gitleaks needs neither sweep, and would ignore one: the upstream hook is
+# `gitleaks protect --staged`, which scans the git INDEX and reports
+# "0 commits scanned ... Passed" as long as nothing is staged — and it sets
+# pass_filenames: false, so `--files` is accepted and then dropped. This
+# repository overrides it with `gitleaks detect --no-git --source .`, a
+# filesystem scan that reads the CONTENT of every file under the repository
+# root — tracked or not, staged or not — on every run, `--all-files` included.
 ```
 
 Security/governance files are covered by CODEOWNERS review policy.
@@ -168,26 +185,64 @@ Security/governance files are covered by CODEOWNERS review policy.
 
 ## device-identity.conf reference
 
-This file lives at `/etc/fleet/device-identity.conf` on every device. It is the only configuration file the agent reads.
+This file lives at `/etc/fleet/device-identity.conf` (mode `0600`) on every device.
+It is the only configuration file the agent reads.
+
+It is **inert data**: parsed line by line by `/usr/lib/fleet-agent/identity-lib.sh`,
+never passed to `source`. Exactly one `KEY=value` per line, no quoting, no escaping,
+values restricted to `[A-Za-z0-9._:/@=+,~-]`. Unknown keys, duplicate keys, missing
+keys and forbidden characters are all rejected with a non-zero exit status.
+
+A value is never text the renderer reads back: `fleet_render_template` in the
+same library fills the Alloy and Vector templates in a **single pass**, so a
+substituted value is never rescanned. That matters because a legitimate value
+can spell the name of another placeholder — a chain of `sed -e` expressions, all
+applying to the same line, would then expand it a second time and could ship the
+device bearer token out as a telemetry label.
+
+Key list source of truth: `FleetBits-api/app/contracts/device_identity.py`.
+The three producers — the Fleet API route `POST /api/v1/devices/{device_id}/provision`,
+the Ansible `fleet_agent` role, and `container-entrypoint.sh` — emit the same keys.
 
 ```ini
-# Written by fleet-firstboot.sh or ansible bootstrap playbook.
-# This file is a Debian conffile — apt upgrade will never overwrite it.
-
 DEVICE_ID=player-paris-hall-a-01
 SITE_ID=paris
 ZONE_ID=hall-a
-RING=0
 DEVICE_ROLE=player
 PROFILE=default
-
+ENVIRONMENT=prod
+RING=0
 FLEET_API_URL=https://api.fleet.yourdomain.com
-FLEET_AGENT_TOKEN=<per-device-bearer-token>
 FLEET_METRICS_URL=https://metrics.fleet.yourdomain.com/api/v1/write
 FLEET_LOGS_URL=https://logs.fleet.yourdomain.com/loki/api/v1/push
-
-# Feature flags (currently used by the Alloy runtime)
+FLEET_AGENT_TOKEN=per-device-bearer-token
+REPO_BASIC_TOKEN=apt-repository-credential
+HEADSCALE_PREAUTH_KEY=
+MQTT_BROKER_HOST=localhost
+MQTT_BROKER_PORT=1883
+MQTT_USERNAME=
+MQTT_PASSWORD=
 ENABLE_MQTT_EXPORTER=false
 ENABLE_PROCESS_EXPORTER=false
 SCRAPE_INTERVAL=30s
 ```
+
+`PROFILE`, `REPO_BASIC_TOKEN`, `HEADSCALE_PREAUTH_KEY`, `MQTT_USERNAME` and
+`MQTT_PASSWORD` are the only keys allowed to carry an empty value.
+`FLEET_AGENT_TOKEN`, `REPO_BASIC_TOKEN`, `HEADSCALE_PREAUTH_KEY` and
+`MQTT_PASSWORD` are secrets: they are redacted from diagnostics bundles and
+never logged.
+
+## Tests
+
+Single entry point, from the repository root:
+
+```bash
+./scripts/run-tests.sh
+```
+
+It runs `shellcheck` over every shell script in the repository and then the
+`bats` suite in `tests/`. Both tools are used from `$PATH` when available and
+from their official container images otherwise, so the command works on a bare
+developer machine with only Docker installed. The same command runs in CI
+(`.github/workflows/agent-tests.yml`).

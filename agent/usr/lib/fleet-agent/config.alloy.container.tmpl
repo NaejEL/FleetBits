@@ -3,7 +3,7 @@
 // Container-variant of the fleet-agent Alloy config.
 // Does NOT include systemd unit exporter or journal log collection
 // (unavailable inside Docker). Uses node exporter for /proc-based metrics.
-// ALL_CAPS_PLACEHOLDER values are substituted by container-entrypoint.sh.
+// Every ALL-CAPS placeholder slot below is substituted, in a single pass, by container-entrypoint.sh.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ===========================================================
@@ -42,6 +42,14 @@ prometheus.relabel "add_labels" {
   rule {
     target_label = "profile"
     replacement  = "PROFILE_PLACEHOLDER"
+  }
+  rule {
+    target_label = "environment"
+    replacement  = "ENVIRONMENT_PLACEHOLDER"
+  }
+  rule {
+    target_label = "ring"
+    replacement  = "RING_PLACEHOLDER"
   }
 }
 
@@ -90,6 +98,9 @@ loki.process "add_labels" {
       zone        = "ZONE_ID_PLACEHOLDER",
       device_id   = "DEVICE_ID_PLACEHOLDER",
       device_role = "DEVICE_ROLE_PLACEHOLDER",
+      profile     = "PROFILE_PLACEHOLDER",
+      environment = "ENVIRONMENT_PLACEHOLDER",
+      ring        = "RING_PLACEHOLDER",
     }
   }
 }

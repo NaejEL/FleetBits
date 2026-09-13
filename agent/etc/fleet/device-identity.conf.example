@@ -1,42 +1,63 @@
 # Fleet Agent Identity Configuration
 # ─────────────────────────────────────────────────────────────────────────────
-# This file is deployed by Ansible from the fleet-agent role and is preserved
-# across `apt upgrade` as a Debian conffile (never overwritten by package).
+# This file is INERT DATA. It is parsed line by line by
+# /usr/lib/fleet-agent/identity-lib.sh and is NEVER evaluated by the shell.
 #
-# After editing, run: systemctl restart fleet-agent
-# Or regenerate the Alloy config manually: /usr/lib/fleet-agent/generate-config.sh
+# Format rules enforced by the parser:
+#   - exactly one KEY=value pair per line, no quotes, no escaping
+#   - every key below must be present; unknown keys are rejected
+#   - values may only contain [A-Za-z0-9._:/@=+,~-]
+#   - blank lines and whole-line '#' comments are ignored;
+#     a '#' after a value is part of the value, so never comment inline
+#   - empty values are accepted only for:
+#     PROFILE, REPO_BASIC_TOKEN, HEADSCALE_PREAUTH_KEY, MQTT_USERNAME, MQTT_PASSWORD
+#
+# Key list source of truth: FleetBits-api/app/contracts/device_identity.py
+# Produced identically by: the Fleet API provisioning route, the Ansible
+# fleet_agent role, and container-entrypoint.sh.
+#
+# Deployed at /etc/fleet/device-identity.conf, mode 0600.
+# After editing, run: /usr/lib/fleet-agent/generate-config.sh
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Device identity ───────────────────────────────────────────────────────────
-SITE_ID=CHANGE_ME                  # e.g. paris
-ZONE_ID=CHANGE_ME                  # e.g. zone-1
-DEVICE_ID=CHANGE_ME                # canonical hostname, e.g. rpi-paris-zone1-01
-DEVICE_ROLE=CHANGE_ME              # e.g. rpi-puzzle, rpi-video, mini-shared
-PROFILE=CHANGE_ME                  # e.g. profile_v1 (leave empty if none)
-ENVIRONMENT=prod                   # prod | staging | lab
-RING=2                             # 0=CI, 1=canary, 2=all sites
+# ── Device identity — telemetry labels (GUIDELINES.md §11) ───────────────────
+# DEVICE_ID: canonical hostname, e.g. rpi-paris-pharaoh-02
+DEVICE_ID=CHANGE_ME
+# SITE_ID: site slug, e.g. paris
+SITE_ID=CHANGE_ME
+# ZONE_ID: zone slug, e.g. pharaoh
+ZONE_ID=CHANGE_ME
+# DEVICE_ROLE: e.g. rpi-puzzle, rpi-video, mini-shared
+DEVICE_ROLE=CHANGE_ME
+# PROFILE: e.g. profile_v1 — may be left empty
+PROFILE=
+# ENVIRONMENT: lab | staging | prod
+ENVIRONMENT=prod
+# RING: 0=lab, 1=canary, 2=production
+RING=2
 
 # ── Fleet control plane URLs ──────────────────────────────────────────────────
+FLEET_API_URL=https://api.fleet.example.com
 FLEET_METRICS_URL=https://metrics.fleet.example.com/api/v1/write
 FLEET_LOGS_URL=https://logs.fleet.example.com/loki/api/v1/push
-FLEET_API_URL=https://api.fleet.example.com
 
-# ── Per-device bearer token ───────────────────────────────────────────────────
-# Issued by Fleet API during bootstrap. Rotated only if device is re-enrolled.
-# Keep this secret — it is the device's identity toward the control plane.
+# ── Credentials — keep secret, redacted from diagnostics bundles ─────────────
+# FLEET_AGENT_TOKEN: per-device bearer token toward the control plane.
 FLEET_AGENT_TOKEN=CHANGE_ME
+# REPO_BASIC_TOKEN: APT repository credential; empty if not repo-enrolled.
+REPO_BASIC_TOKEN=
+# HEADSCALE_PREAUTH_KEY: empty means "skip Headscale mesh enrollment".
+HEADSCALE_PREAUTH_KEY=
 
-# ── Observability feature flags ───────────────────────────────────────────────
-# generate-config.sh reads these to enable optional Alloy components.
-# All devices always get: node metrics, systemd metrics, journal logs.
-
-# Enable the MQTT exporter on the device running Mosquitto.
-ENABLE_MQTT_EXPORTER=false
+# ── MQTT broker access ────────────────────────────────────────────────────────
 MQTT_BROKER_HOST=localhost
 MQTT_BROKER_PORT=1883
+# MQTT_USERNAME / MQTT_PASSWORD: issued at provisioning; empty if MQTT unused.
+MQTT_USERNAME=
+MQTT_PASSWORD=
 
-# Enable process-level metrics (useful on mini-PCs with high CPU consumers).
+# ── Collector feature flags (generate-config.sh reads these) ─────────────────
+ENABLE_MQTT_EXPORTER=false
 ENABLE_PROCESS_EXPORTER=false
-
-# Alloy scrape interval. Use 30s on RPi, 15s on mini-PC.
+# SCRAPE_INTERVAL: 30s on RPi, 15s on mini-PC.
 SCRAPE_INTERVAL=30s
