@@ -23,9 +23,10 @@ jobs:
         id: platform_ref
         env:
           # github.head_ref is empty outside a pull_request event — and observed
-          # empty on a re-run of one — which silently fell back to main. The
-          # PR payload carries the branch in a field that survives both.
-          HEAD_REF: ${{ github.head_ref || github.event.pull_request.head.ref }}
+          # empty on a re-run of one — which silently fell back to main. The PR
+          # payload carries the branch in a field that survives both, and
+          # ref_name covers a manual workflow_dispatch on the branch.
+          HEAD_REF: ${{ github.head_ref || github.event.pull_request.head.ref || github.ref_name }}
         run: |
           # The compose stack lives in FleetBits-platform, and a change that
           # spans both repositories must be tested against the matching side.
