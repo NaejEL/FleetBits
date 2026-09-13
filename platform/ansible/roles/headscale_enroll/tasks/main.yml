@@ -1,0 +1,85 @@
+---
+# roles/headscale_enroll/tasks/main.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Enrolls a device into the Headscale WireGuard mesh and records its stable
+# Headscale IP back to the inventory host_vars so future runs use it directly.
+#
+# Required variables:
+#   vault_headscale_preauth_key   — single-use or reusable pre-auth key
+#   headscale_url                 — e.g. "https://headscale.fleet.example.com"
+#   device_id                     — canonical hostname
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Install tailscale apt signing key
+  ansible.builtin.apt_key:
+    url: "https://pkgs.tailscale.com/stable/debian/bookworm.gpg"
+    state: present
+
+- name: Add tailscale apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://pkgs.tailscale.com/stable/debian bookworm main"
+    state: present
+    filename: tailscale
+
+- name: Install tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+
+- name: Check if device is already enrolled in Headscale
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status_raw
+  changed_when: false
+  failed_when: false
+
+- name: Parse tailscale status
+  ansible.builtin.set_fact:
+    tailscale_enrolled: "{{ (tailscale_status_raw.stdout | from_json).BackendState == 'Running' }}"
+  when: tailscale_status_raw.rc == 0
+
+- name: Set tailscale_enrolled to false if tailscale not running
+  ansible.builtin.set_fact:
+    tailscale_enrolled: false
+  when: tailscale_status_raw.rc != 0
+
+- name: Enroll device in Headscale
+  ansible.builtin.command: >
+    tailscale up
+      --login-server {{ headscale_url }}
+      --authkey {{ vault_headscale_preauth_key }}
+      --hostname {{ device_id | default(inventory_hostname) }}
+      --accept-routes
+  when: not tailscale_enrolled
+  no_log: true   # auth key must not appear in logs
+
+- name: Wait for Headscale IP assignment (up to 30s)
+  ansible.builtin.command: tailscale ip -4
+  register: headscale_ip_result
+  retries: 10
+  delay: 3
+  until: headscale_ip_result.rc == 0 and headscale_ip_result.stdout != ""
+  changed_when: false
+
+- name: Record Headscale IP
+  ansible.builtin.set_fact:
+    headscale_ip: "{{ headscale_ip_result.stdout | trim }}"
+
+- name: Show assigned Headscale IP
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} enrolled with Headscale IP {{ headscale_ip }}"
+
+# ── Write Headscale IP back to host_vars ──────────────────────────────────────
+# This task runs on the Ansible controller (delegate_to: localhost).
+# It creates/updates host_vars/<hostname>.yml with `ansible_host`.
+# After bootstrap, the permanent inventory (inventories/prod/) should be
+# manually updated with these IPs and this bootstrap inventory retired.
+- name: Write Headscale IP to host_vars (controller-side)
+  ansible.builtin.blockinfile:
+    path: "{{ playbook_dir }}/../host_vars/{{ inventory_hostname }}.yml"
+    create: true
+    marker: "# {mark} MANAGED BY bootstrap_device.yml — headscale_enroll role"
+    block: |
+      # Stable Headscale mesh IP — never changes after enrollment
+      ansible_host: "{{ headscale_ip }}"
+  delegate_to: localhost

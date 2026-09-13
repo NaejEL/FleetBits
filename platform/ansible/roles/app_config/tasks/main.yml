@@ -1,0 +1,50 @@
+---
+# roles/app_config/tasks/main.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploys all service configuration files to the device from Jinja2 templates.
+# This role is idempotent: it only writes a file if the rendered content
+# differs from what is on disk.  Changed files trigger their restart handlers.
+#
+# Add a new service config by:
+#   1. Creating roles/app_config/templates/<service>/your-config.j2
+#   2. Adding a task block below for that service
+#   3. Adding a corresponding handler in handlers/main.yml
+#
+# Variable resolution order (most specific wins):
+#   group_vars/all/vars.yml → group_vars/rpi.yml (or mini_pc.yml)
+#   → group_vars/site_<slug>/vars.yml → host_vars/<hostname>.yml
+#   Secrets → group_vars/all/vault.yml (ansible-vault encrypted)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── custom-soft ───────────────────────────────────────────────────────────────
+- name: Deploy custom-soft config
+  ansible.builtin.template:
+    src: custom-soft/config.json.j2
+    dest: /etc/custom-soft/config.json
+    owner: root
+    group: root
+    mode: "0640"
+  notify: restart custom-soft
+  when: "'custom-soft' in enabled_services | default([])"
+
+# ── zone-controller ───────────────────────────────────────────────────────────
+- name: Deploy zone-controller appsettings
+  ansible.builtin.template:
+    src: zone-controller/appsettings.json.j2
+    dest: /custom-soft/appsettings.json
+    owner: zone-controller
+    group: zone-controller
+    mode: "0640"
+  notify: restart zone-controller
+  when: "'zone-controller' in enabled_services | default([])"
+
+# ── video-player ──────────────────────────────────────────────────────────────
+- name: Deploy video-player settings
+  ansible.builtin.template:
+    src: video-player/settings.json.j2
+    dest: /etc/video-player/settings.json
+    owner: root
+    group: root
+    mode: "0640"
+  notify: restart video-player
+  when: "'video-player' in enabled_services | default([])"

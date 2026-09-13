@@ -1,0 +1,48 @@
+---
+# roles/systemd_hardening/tasks/main.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Applies systemd hardening to edge devices:
+#   - journald disk limits (prevent filling SD card / SSD)
+#   - WatchdogSec on fleet-agent.service (auto-restart hung processes)
+#   - Disable services not needed on headless fleet devices
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Configure systemd-journald limits
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf.d/fleet-limits.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart journald
+
+- name: Create fleet-agent watchdog override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/fleet-agent.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy fleet-agent watchdog override
+  ansible.builtin.template:
+    src: fleet-agent-watchdog.conf.j2
+    dest: /etc/systemd/system/fleet-agent.service.d/watchdog.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload systemd daemon
+
+- name: Disable services not needed on headless devices
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - bluetooth.service
+    - avahi-daemon.service
+  ignore_errors: true   # service may not exist on all images
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true

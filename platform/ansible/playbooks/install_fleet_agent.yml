@@ -1,0 +1,38 @@
+---
+# ansible/playbooks/install_fleet_agent.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Install or upgrade fleet-agent to a specific version.
+# Thin wrapper around the fleet_agent role for use as a standalone Semaphore
+# job template ("install-fleet-agent").
+#
+# Required extra-vars (set by Semaphore):
+#   target_group        — Ansible inventory group
+#   fleet_agent_version — version to install (e.g. "1.2.3")
+#   site                — site slug
+#   zone                — zone slug
+#   device_id           — canonical hostname
+#   device_role         — device role label
+#   profile             — profile slug
+#   fleet_api_token     — per-device bearer token (from vault or Bootstrap API)
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Install fleet-agent on target hosts
+  hosts: "{{ target_group }}"
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Validate required extra-vars
+      ansible.builtin.assert:
+        that:
+          - fleet_agent_version is defined and fleet_agent_version != ""
+          - site is defined and site != ""
+        fail_msg: "fleet_agent_version and site must be provided as extra-vars"
+
+    - name: Set fleet_agent_token from per-device token if not supplied
+      ansible.builtin.set_fact:
+        fleet_agent_token: "{{ fleet_api_token | default(vault_fleet_bootstrap_token | default('')) }}"
+      no_log: true
+
+  roles:
+    - role: fleet_agent

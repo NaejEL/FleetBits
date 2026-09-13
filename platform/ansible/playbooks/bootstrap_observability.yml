@@ -1,0 +1,42 @@
+---
+# ansible/playbooks/bootstrap_observability.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Bootstrap Grafana Alloy observability on a device that already has
+# fleet-agent installed but needs its Alloy config regenerated (e.g. after
+# changing fleet URLs or rotating the device token).
+#
+# Semaphore job template: "bootstrap-alloy"
+#
+# Required extra-vars:
+#   target_group   — Ansible inventory group or host
+#   site           — site slug
+#   zone           — zone slug
+#   device_id      — canonical hostname
+#   device_role    — device role label
+#   profile        — profile slug
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Bootstrap Alloy observability on target hosts
+  hosts: "{{ target_group }}"
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Regenerate Alloy config from current identity
+      ansible.builtin.command: /usr/lib/fleet-agent/generate-config.sh
+      changed_when: true
+
+    - name: Restart fleet-agent to apply new config
+      ansible.builtin.systemd:
+        name: fleet-agent
+        state: restarted
+        daemon_reload: true
+
+    - name: Verify fleet-agent is active
+      ansible.builtin.command: systemctl is-active fleet-agent
+      register: agent_state
+      retries: 5
+      delay: 3
+      until: agent_state.stdout == "active"
+      changed_when: false
+      failed_when: agent_state.stdout != "active"

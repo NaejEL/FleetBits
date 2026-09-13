@@ -1,0 +1,111 @@
+# alertmanager/alertmanager.yml
+# Alert routing + quiet-hours configuration.
+#
+# Quiet hours suppress alerts during known nightly power-off windows at each site.
+# Add a new time_interval block and a corresponding route matcher per site.
+#
+# Current sites: paris, lyon  (add more as sites are onboarded)
+
+global:
+  resolve_timeout: 5m
+  smtp_from: "alerts@fleetbits.local"
+  smtp_smarthost: "localhost:587"
+
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+route:
+  receiver: ops-default
+  group_by: [site, zone, alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # ── P1 fast path: always alert immediately ─────────────────────────────
+    - matchers:
+        - severity = "P1"
+      receiver: ops-critical
+      continue: true   # also fall through to quiet-hour routes below
+
+    # ── Per-site quiet hours ───────────────────────────────────────────────
+    # Alert is suppressed during the site's nightly power-off window.
+    # Devices simply power off — this is expected behaviour, not an incident.
+    - matchers:
+        - site = "paris"
+      mute_time_intervals:
+        - paris-night
+      receiver: ops-default
+
+    - matchers:
+        - site = "lyon"
+      mute_time_intervals:
+        - lyon-night
+      receiver: ops-default
+
+    # ── Control plane alerts: always on ───────────────────────────────────
+    - matchers:
+        - device_role = "control-plane"
+      receiver: ops-critical
+
+# ── Quiet-hour time intervals ─────────────────────────────────────────────────
+# Weekdays use 24h format (UTC). Adjust to match each site's local timezone.
+# Paris: UTC+1 in winter / UTC+2 in summer — use UTC equivalents accordingly.
+# These overlap to cover DST transitions (22:00 local → 21:00 or 20:00 UTC).
+time_intervals:
+  - name: paris-night
+    time_intervals:
+      # Alertmanager requires start < end — split cross-midnight windows into two entries.
+      - weekdays: ["monday:friday"]
+        times:
+          - start_time: "21:00"
+            end_time: "24:00"
+          - start_time: "00:00"
+            end_time: "08:00"
+      - weekdays: ["saturday", "sunday"]
+        times:
+          - start_time: "21:00"
+            end_time: "24:00"
+          - start_time: "00:00"
+            end_time: "09:00"
+
+  - name: lyon-night
+    time_intervals:
+      # full week: sunday(0) ≤ saturday(6) — alertmanager day ordinals are Sun=0..Sat=6
+      - weekdays: ["sunday:saturday"]
+        times:
+          - start_time: "21:30"
+            end_time: "24:00"
+          - start_time: "00:00"
+            end_time: "08:30"
+
+# ── Receivers ─────────────────────────────────────────────────────────────────
+receivers:
+  - name: ops-default
+    email_configs:
+      - to: "ops@fleetbits.local"
+        send_resolved: true
+
+  - name: ops-critical
+    email_configs:
+      - to: "ops@fleetbits.local"
+        send_resolved: true
+    # Uncomment to add PagerDuty / OpsGenie / Slack:
+    # pagerduty_configs:
+    #   - routing_key: "<PAGERDUTY_INTEGRATION_KEY>"
+    # slack_configs:
+    #   - api_url: "<SLACK_WEBHOOK_URL>"
+    #     channel: "#alerts-critical"
+    #     title: "{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}"
+
+  # Blackhole: used for alerts that should never fire (misconfiguration safety net)
+  - name: blackhole
+
+inhibit_rules:
+  # If a DeviceOffline P1 fires, suppress all lower-severity alerts from the same device
+  - source_matchers:
+      - alertname = "DeviceOffline"
+      - severity = "P1"
+    target_matchers:
+      - severity = "P2"
+    equal: [device_id]

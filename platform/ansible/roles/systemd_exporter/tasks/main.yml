@@ -1,0 +1,110 @@
+---
+# roles/systemd_exporter/tasks/main.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Installs prometheus-systemd-exporter as a systemd service on an edge device.
+# Exposes systemd unit states (active/inactive/failed), restart counts, and
+# start/stop timestamps as Prometheus metrics on :9558.
+#
+# Grafana Alloy (running as fleet-agent) scrapes this endpoint and pushes
+# metrics to the central Prometheus via remote_write.
+#
+# Required: systemd_exporter_version, systemd_exporter_arch (from defaults/)
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Check if systemd_exporter is already at desired version
+  ansible.builtin.command:
+    cmd: "{{ systemd_exporter_install_dir }}/systemd_exporter --version"
+  register: _existing_version
+  changed_when: false
+  failed_when: false
+
+- name: Install systemd_exporter binary
+  when: >
+    _existing_version.rc != 0 or
+    systemd_exporter_version not in (_existing_version.stdout | default(''))
+  block:
+    - name: Download systemd_exporter release archive
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/prometheus-community/systemd_exporter/releases/download/v{{ systemd_exporter_version }}/systemd_exporter-{{ systemd_exporter_version }}.linux-{{ systemd_exporter_arch }}.tar.gz
+        dest: "/tmp/systemd_exporter.tar.gz"
+        mode: "0644"
+
+    - name: Extract systemd_exporter binary
+      ansible.builtin.unarchive:
+        src: "/tmp/systemd_exporter.tar.gz"
+        dest: "/tmp"
+        remote_src: true
+
+    - name: Install binary to {{ systemd_exporter_install_dir }}
+      ansible.builtin.copy:
+        src: "/tmp/systemd_exporter-{{ systemd_exporter_version }}.linux-{{ systemd_exporter_arch }}/systemd_exporter"
+        dest: "{{ systemd_exporter_install_dir }}/systemd_exporter"
+        owner: root
+        group: root
+        mode: "0755"
+        remote_src: true
+      notify: restart systemd_exporter
+
+    - name: Remove temporary archive
+      ansible.builtin.file:
+        path: "/tmp/systemd_exporter.tar.gz"
+        state: absent
+
+- name: Deploy systemd_exporter service unit
+  ansible.builtin.template:
+    src: systemd_exporter.service.j2
+    dest: "{{ systemd_exporter_service_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart systemd_exporter
+
+- name: Enable and start systemd_exporter
+  ansible.builtin.systemd:
+    name: systemd_exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Ensure Alloy scrape config directory exists
+  ansible.builtin.file:
+    path: "{{ alloy_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Alloy scrape snippet for systemd_exporter
+  ansible.builtin.copy:
+    dest: "{{ alloy_config_dir }}/systemd_exporter.river"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      // Grafana Alloy — scrape systemd_exporter on this device and forward to Prometheus
+      prometheus.scrape "systemd_exporter" {
+        targets = [{ "__address__" = "127.0.0.1:9558" }]
+        forward_to = [prometheus.remote_write.fleet.receiver]
+        job_name   = "systemd_exporter"
+        extra_metrics_relabels = [
+          {
+            source_labels = ["__address__"]
+            target_label  = "device_id"
+            replacement   = "{{ device_id }}"
+          },
+          {
+            source_labels = ["__address__"]
+            target_label  = "site"
+            replacement   = "{{ site }}"
+          },
+          {
+            source_labels = ["__address__"]
+            target_label  = "zone"
+            replacement   = "{{ zone }}"
+          },
+        ]
+      }
+  notify: restart systemd_exporter

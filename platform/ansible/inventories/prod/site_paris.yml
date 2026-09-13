@@ -1,0 +1,64 @@
+# Production inventory — Paris site
+# ─────────────────────────────────────────────────────────────────────────────
+# All ansible_host values are stable Headscale mesh IPs (100.64.x.x).
+# These IPs are assigned once at enrollment and never change.
+#
+# Naming convention:  {role}-{site}-{zone}-{seq}
+#   role     → rpi (Raspberry Pi) | mini (mini-PC / NUC)
+#   site     → paris | lyon | nice | ...
+#   zone     → zone-1 | zone-2 | shared  (short slug, no spaces)
+#   seq      → two-digit zero-padded sequence: 01, 02, ...
+#
+# Site groups (site_paris, site_lyon, etc.) map to:
+#   - group_vars/site_paris/vars.yml   (non-secret site overrides)
+#   - group_vars/site_paris/vault.yml  (per-site secrets — optional)
+# ─────────────────────────────────────────────────────────────────────────────
+
+all:
+  children:
+    site_paris:
+      vars:
+        site:        paris
+        environment: prod
+        ring:        "2"
+        fleet_metrics_url: "https://metrics.fleet.example.com/api/v1/write"
+        fleet_logs_url:    "https://logs.fleet.example.com/loki/api/v1/push"
+        fleet_api_url:     "https://api.fleet.example.com"
+
+      children:
+        # ── Shared server (spans multiple zones) ─────────────────────────────
+        paris_shared:
+          hosts:
+            mini-paris-shared-01:
+              device_role:  mini-shared
+              shared_zones: ["zone-1", "zone-2"]
+              ansible_host: "100.64.1.10"
+
+        # ── Zone 1 ───────────────────────────────────────────────────────────
+        paris_zone_1:
+          vars:
+            zone:    zone-1
+            profile: profile_v1
+          hosts:
+            rpi-paris-zone1-01:
+              device_role: rpi-puzzle
+              ansible_host: "100.64.1.11"
+            rpi-paris-zone1-02:
+              device_role: rpi-video
+              ansible_host: "100.64.1.12"
+            rpi-paris-zone1-03:
+              device_role: rpi-audio
+              ansible_host: "100.64.1.13"
+
+        # ── Zone 2 ───────────────────────────────────────────────────────────
+        paris_zone_2:
+          vars:
+            zone:    zone-2
+            profile: profile_v2
+          hosts:
+            rpi-paris-zone2-01:
+              device_role: rpi-puzzle
+              ansible_host: "100.64.1.14"
+            rpi-paris-zone2-02:
+              device_role: rpi-av
+              ansible_host: "100.64.1.15"

@@ -1,0 +1,27 @@
+---
+# ansible/playbooks/configure_device.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Push all service configuration files to target devices from Jinja2 templates.
+# Runs the app_config role, which is idempotent: files are only written if
+# the rendered content differs from what is on disk.
+#
+# Use cases:
+#   - Config change: edit template/group_vars → git push → run this playbook
+#   - Device recovery: re-apply all configs after reflash (§9.4 / §17.6)
+#   - Post-package-upgrade: called automatically by deploy_artifact.yml
+#
+# Triggered by: Semaphore job template "configure_device" or Fleet UI
+#
+# Required extra-vars (passed via Semaphore):
+#   target_group     — Ansible inventory group or individual hostname
+#   change_id        — tracking ID (optional for config-only runs)
+#   requested_by     — actor
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Push service configs to target hosts
+  hosts: "{{ target_group }}"
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: app_config

@@ -1,0 +1,83 @@
+---
+# ansible/playbooks/bootstrap_device.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Day-0 bootstrap: enroll one or more existing devices into the fleet.
+# Run this against the BOOTSTRAP inventory (current IPs), not the prod inventory.
+#
+# What it does on each device (in parallel, --forks 50):
+#   1. Registers device with Fleet API → receives per-device token
+#   2. Installs tailscale + enrolls in Headscale → device gets stable mesh IP
+#   3. Installs fleet-agent from aptly → configures identity → starts telemetry
+#   4. Records the Headscale IP to host_vars/ on the controller
+#
+# After the run:
+#   - Copy ansible_host values from host_vars/ into inventories/prod/<site>.yml
+#   - Retire inventories/bootstrap/hosts.yml (never needed again)
+#
+# Usage:
+#   ansible-playbook playbooks/bootstrap_device.yml \
+#     -i inventories/bootstrap/ \
+#     --forks 50
+#
+# For a single device without modifying the inventory:
+#   ansible-playbook playbooks/bootstrap_device.yml \
+#     -i inventories/bootstrap/ \
+#     --limit rpi-paris-zone1-01
+#
+# Required extra-vars (passed via Semaphore or -e):
+#   fleet_agent_version   — version to install, e.g. "1.2.3"
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Bootstrap devices into fleet
+  hosts: bootstrap_targets
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Ensure required variables are defined
+      ansible.builtin.assert:
+        that:
+          - site is defined and site != ""
+          - zone is defined
+          - device_role is defined and device_role != ""
+          - fleet_agent_version is defined and fleet_agent_version != ""
+        fail_msg: >
+          Missing required variables. Ensure each host in the inventory
+          has 'site', 'zone', 'device_role' set, and pass
+          'fleet_agent_version' as an extra-var.
+
+    - name: Set device_id from inventory hostname if not overridden
+      ansible.builtin.set_fact:
+        device_id: "{{ device_id | default(inventory_hostname) }}"
+
+    # ── Register device with Fleet API ─────────────────────────────────────
+    # Returns { device_id, token } — token written to identity.conf below.
+    - name: Register device with Fleet API
+      ansible.builtin.uri:
+        url: "{{ fleet_api_url }}/api/v1/devices"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ vault_fleet_bootstrap_token | default(vars['vault_fleet_bootstrap_token_' ~ site]) }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          device_id:   "{{ device_id }}"
+          site_id:     "{{ site }}"
+          zone_id:     "{{ zone }}"
+          device_role: "{{ device_role }}"
+          ring:        "{{ ring | default('2') }}"
+          profile:     "{{ profile | default('') }}"
+        status_code: [200, 201]
+      register: fleet_api_response
+      delegate_to: localhost
+      run_once: false
+
+    - name: Store per-device Fleet API token
+      ansible.builtin.set_fact:
+        fleet_agent_token: "{{ fleet_api_response.json.token }}"
+      no_log: true
+
+  roles:
+    - role: headscale_enroll
+    - role: systemd_hardening
+    - role: fleet_agent

@@ -1,0 +1,8 @@
+# /etc/systemd/system/fleet-agent.service.d/watchdog.conf
+# Managed by Ansible — roles/systemd_hardening
+# systemd will restart fleet-agent if it stops sending watchdog keepalives
+# within WatchdogSec seconds.
+[Service]
+WatchdogSec={{ fleet_agent_watchdog_sec | default(30) }}
+Restart=on-failure
+RestartSec=5

@@ -1,0 +1,98 @@
+---
+# roles/fleet_agent/tasks/main.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Installs and configures the fleet-agent .deb package on an edge device.
+# Called by bootstrap_device.yml (first install) and deploy_artifact.yml
+# (version upgrades).
+#
+# Required variables (set per-device in inventory or passed as extra-vars):
+#   fleet_agent_version   — package version to install (e.g. "1.2.3")
+#   site                  — site slug (e.g. "paris")
+#   zone                  — zone slug (e.g. "zone-1")
+#   device_id             — canonical hostname (e.g. "rpi-paris-zone1-01")
+#   device_role           — free-text role label (e.g. "rpi-puzzle")
+#   profile               — profile slug (e.g. "profile_v1")
+#   fleet_agent_token     — per-device bearer token (from vault or API response)
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Add fleet aptly repo signing key
+  ansible.builtin.apt_key:
+    url: "{{ fleet_repo_url }}/gpg"
+    state: present
+
+- name: Add fleet aptly repo
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/fleet-archive-keyring.gpg] {{ fleet_repo_url }} {{ aptly_repo_suite }} {{ aptly_repo_component }}"
+    state: present
+    filename: fleet
+  notify: Update apt cache
+
+- name: Flush handlers (ensure apt cache is fresh before install)
+  ansible.builtin.meta: flush_handlers
+
+- name: Install pinned fleet-agent version
+  ansible.builtin.apt:
+    name: "fleet-agent={{ fleet_agent_version }}"
+    state: present
+  notify: Restart fleet-agent
+
+# ENABLE_MQTT_EXPORTER=true is a promise the identity file has to keep.
+# generate-config.sh calls `fleet_identity_require MQTT_BROKER_HOST
+# MQTT_BROKER_PORT MQTT_USERNAME MQTT_PASSWORD` before rendering the exporter
+# block and exits non-zero when any of them is empty — and the template task
+# below notifies the handler that runs exactly that script. Without this guard,
+# a host with `enable_mqtt_exporter: true` and no broker password in the vault
+# writes a valid-looking file and then fails the play in the handler, one step
+# away from the cause. Assert here instead: nothing is written, and the message
+# names the variable to set.
+- name: Assert the MQTT exporter has the credentials generate-config.sh requires
+  ansible.builtin.assert:
+    that:
+      - not (enable_mqtt_exporter | default(false) | bool)
+        or ((mqtt_username | default('')) | length > 0
+            and (mqtt_password | default('')) | length > 0)
+    fail_msg: >-
+      enable_mqtt_exporter is true for {{ inventory_hostname }} but MQTT_USERNAME
+      and/or MQTT_PASSWORD would be written empty, which generate-config.sh
+      rejects. Set vault_mqtt_broker_password in group_vars/all/vault.yml (and
+      mqtt_username if this broker uses another account), or set
+      enable_mqtt_exporter to false for this host.
+    success_msg: MQTT exporter credentials are consistent with ENABLE_MQTT_EXPORTER.
+
+# Mode 0600 — identical to firstboot.sh and scripts/postinst.sh in
+# FleetBits-agent. The file carries FLEET_AGENT_TOKEN, REPO_BASIC_TOKEN,
+# HEADSCALE_PREAUTH_KEY and MQTT_PASSWORD: root-only, no group read.
+- name: Deploy device-identity.conf
+  ansible.builtin.template:
+    src: device-identity.conf.j2
+    dest: "{{ fleet_identity_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Regenerate collector config
+
+- name: Flush handlers (generate Alloy config before enabling services)
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start fleet-agent
+  ansible.builtin.systemd:
+    name: "{{ fleet_agent_service }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable and start fleet-heartbeat timer
+  ansible.builtin.systemd:
+    name: "{{ fleet_agent_timer }}"
+    enabled: true
+    state: started
+
+- name: Verify fleet-agent is active
+  ansible.builtin.systemd_service:
+    name: "{{ fleet_agent_service }}"
+  register: fleet_agent_state
+  changed_when: false
+  failed_when: fleet_agent_state.status.ActiveState != "active"
+  retries: 5
+  delay: 3
+  until: fleet_agent_state.status.ActiveState == "active"
