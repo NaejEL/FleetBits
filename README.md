@@ -55,15 +55,15 @@ Each edge device runs **fleet-agent** — a single `.deb` package that handles m
 
 ---
 
-## Repositories
+## Repository layout
 
-| Repo | Purpose |
+| Folder | Purpose |
 |------|---------|
-| **FleetBits** ← you are here | Monorepo root — docs, security roadmap, feature roadmap |
-| `FleetBits-platform` | VPS control plane (Docker Compose + Ansible) |
-| `FleetBits-api` | REST API (FastAPI + PostgreSQL) |
-| `FleetBits-ui` | Web interface (Flask) |
-| `FleetBits-agent` | Edge device agent (.deb package) |
+| **`/`** ← you are here | Monorepo root — docs, security roadmap, feature roadmap, CI |
+| `platform/` | VPS control plane (Docker Compose + Ansible) |
+| `api/` | REST API (FastAPI + PostgreSQL) |
+| `ui/` | Web interface (Flask) |
+| `agent/` | Edge device agent (.deb package) |
 
 ---
 
@@ -79,7 +79,7 @@ You need:
 If you run Proxmox VE, FleetBits installs into an LXC container with one command on your Proxmox host:
 
 ```bash
-GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/ct/fleetbits.sh)"
+GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits/main/platform/scripts/proxmox/ct/fleetbits.sh)"
 ```
 
 The script asks a few questions (domain, container resources) and does the rest. Takes about 5 minutes.
@@ -89,7 +89,7 @@ The script asks a few questions (domain, container resources) and does the rest.
 Same installer script, run directly on the server (bare metal, cloud VPS, home server):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/install/fleetbits-install.sh \
+curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits/main/platform/scripts/proxmox/install/fleetbits-install.sh \
   | GITHUB_OWNER=<github-owner> FLEET_DOMAIN=fleet.yourdomain.com bash
 ```
 
@@ -119,11 +119,11 @@ No SSH needed. No manual package installation.
 
 | Guide | Audience |
 |-------|---------|
-| [Quick-start guide](FleetBits-platform/docs/quickstart.md) | Everyone |
-| [Web UI walkthrough](FleetBits-platform/docs/ui-guide.md) | Operators |
-| [Enrolling a device](FleetBits-platform/docs/enrolling/) | Technicians |
-| [Platform README](FleetBits-platform/README.md) | Admins / DevOps |
-| `FleetBits-api/README.md` | Developers |
+| [Quick-start guide](platform/docs/quickstart.md) | Everyone |
+| [Web UI walkthrough](platform/docs/ui-guide.md) | Operators |
+| [Enrolling a device](platform/docs/enrolling/) | Technicians |
+| [Platform README](platform/README.md) | Admins / DevOps |
+| [API README](api/README.md) | Developers |
 | [Security roadmap](SECURITY_ROADMAP.md) | Everyone |
 | [Feature roadmap](FEATURE_ROADMAP.md) | Everyone |
 | [LLM agent guidelines](LLM_AGENT_GUIDELINES.md) | AI contributors |

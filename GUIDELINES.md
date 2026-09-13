@@ -24,7 +24,7 @@ When updating plans/docs:
 
 1. `SECURITY_ROADMAP.md` is the canonical security direction
 2. `FEATURE_ROADMAP.md` is the canonical product direction
-3. Repo-specific roadmaps (e.g., `FleetBits-api/FEATURE_ROADMAP.md`) are scoped to that repo only
+3. Component-specific roadmaps (e.g., `api/FEATURE_ROADMAP.md`) are scoped to that component only
 
 Never introduce a second conflicting source of truth.
 

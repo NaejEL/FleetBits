@@ -248,7 +248,7 @@ Grafana GF_AUTH_PROXY_ENABLED=true → auto-creates / auto-logs-in user
 ### 9.6 – Generic VPS installer design
 
 ```
-curl -fsSL https://raw.githubusercontent.com/<owner>/FleetBits-platform/main/scripts/install/fleetbits-install.sh \
+curl -fsSL https://raw.githubusercontent.com/<owner>/FleetBits/main/platform/scripts/proxmox/install/fleetbits-install.sh \
   | FLEET_DOMAIN=fleet.yourdomain.com bash
 ```
 

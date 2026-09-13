@@ -29,19 +29,19 @@
   - State: ✅ **CLOSED** (2026-03-29 — regression fix applied)
   - Done: per-device MQTT credentials (unique username+bcrypt password per device), fail-closed broker (`allow_anonymous=false`), topic-level ACL isolation (`device/<device_id>/#` only — heartbeat wildcard `device/+/heartbeat` removed to restore per-device isolation), ACL sync loop in Mosquitto every 300s
   - Regression fixed: `get_mqtt_acl()` previously included `"device/+/heartbeat"` allowing cross-device topic access — removed in this cycle
-  - Evidence: `FleetBits-api/app/routers/devices.py` (`get_mqtt_acl`), `FleetBits-platform/docker/mosquitto/docker-entrypoint.sh`
+  - Evidence: `api/app/routers/devices.py` (`get_mqtt_acl`), `platform/docker/mosquitto/docker-entrypoint.sh`
 
 - `SEC-P0-02` — **Device token/credential storage safety**
   - State: ✅ **CLOSED** (2026-03-29 — two regressions fixed)
   - Done: MQTT passwords bcrypt-hashed in DB (`mqtt_password_hash` column), plaintext returned **once** at enrollment only, device bearer tokens SHA-256 hashed at rest, migration `0007_device_mqtt_credentials.py` reversible
   - Regression 1 fixed: `provision_device` now enforces single-use via ProvisionToken DB lookup (hash → used_at check + mark consumed) — preventing replay attacks within 72h TTL
   - Regression 2 fixed: `provision_device` now stores `device_token_hash` so the temporary bearer token is valid for subsequent calls (was returned but never persisted)
-  - Evidence: `FleetBits-api/app/routers/devices.py` (`provision_device`), `FleetBits-api/app/services/token.py`
+  - Evidence: `api/app/routers/devices.py` (`provision_device`), `api/app/services/token.py`
 
 - `SEC-P0-03` — **Branch protection across all 4 repos**
   - State: 🔧 **Infrastructure ready — run script to activate** (5 min total)
-  - Done: `CODEOWNERS`, `PULL_REQUEST_TEMPLATE.md`, `dependabot.yml`, `security-baseline.yml` present in all 4 repos; `FleetBits-platform/scripts/apply-branch-protection.sh` written and ready
-  - Next action (owner): `GITHUB_OWNER=<username> bash FleetBits-platform/scripts/apply-branch-protection.sh`
+  - Done: `CODEOWNERS`, `PULL_REQUEST_TEMPLATE.md`, `dependabot.yml`, `security-baseline.yml` present at the monorepo root; `platform/scripts/apply-branch-protection.sh` written and ready
+  - Next action (owner): `GITHUB_OWNER=<username> bash platform/scripts/apply-branch-protection.sh`
     (requires `gh` CLI authenticated with `admin:repo` scope)
 
 - `SEC-P0-04` — **Required security baseline checks before merge**
@@ -51,8 +51,8 @@
 
 - `SEC-P0-05` — **Security regression suite required in CI**
   - State: 🔧 **Suite passing — activation requires branch protection** (see SEC-P0-03)
-  - Done: `security-regression-stack` workflow exists and passes in `FleetBits-api`
-  - Next action (owner): Run `apply-branch-protection.sh` — it sets `security-regression-stack` as required for `FleetBits-api`
+  - Done: `security-regression-stack` workflow exists and passes
+  - Next action (owner): Run `apply-branch-protection.sh` — note that `security-regression-stack` carries a `paths:` filter and is therefore not set as a required check
 
 - `SEC-P0-06` — **Pre-commit security enforcement**
   - State: 🔧 **Security hooks deployed — team adoption pending** (~1 week)
@@ -118,12 +118,12 @@
 
 ## Required security controls for merge policy
 
-Apply to each repo:
+Apply to the `FleetBits` monorepo, covering all four components:
 
-- `FleetBits-api`
-- `FleetBits-ui`
-- `FleetBits-agent`
-- `FleetBits-platform`
+- `api/`
+- `ui/`
+- `agent/`
+- `platform/`
 
 Minimum required checks:
 
