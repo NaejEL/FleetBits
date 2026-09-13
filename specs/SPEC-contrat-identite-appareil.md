@@ -2,6 +2,14 @@
 
 Statut : APPROUVEE
 
+> **Note du 2026-09-14 — document daté, conservé tel qu'approuvé.**
+> Cette spécification a été rédigée et approuvée le 2026-09-13, alors que FleetBits était réparti
+> en quatre dépôts git indépendants. Le projet est depuis un monorepo unique : les chemins ont été
+> mis à jour (`api/`, `ui/`, `agent/`, `platform/`), mais le texte parle encore de « dépôts » là où
+> il faut lire « composants », et sa décision 6 annonce au futur une migration désormais faite.
+> Ces anachronismes sont assumés : les décisions d'une spec approuvée ne se réécrivent pas après
+> coup. Les 23 critères d'acceptation ont tous été vérifiés et les trois PR sont mergées.
+
 ## Contexte
 
 Le fichier `/etc/fleet/device-identity.conf` est le seul fichier de configuration lu par l'agent embarqué. Il est aujourd'hui produit par **trois** voies et consommé par **quatre** scripts, sans définition partagée ni format négocié. Trois findings de `AUDIT-vibecode.md` en découlent, et ils sont chaînés : VIB-03 dépend de VIB-02, VIB-05 dépend de VIB-03.

@@ -178,7 +178,7 @@ See [IS_FLEETBITS_SAFE.md](IS_FLEETBITS_SAFE.md) for the concise safety decision
 
 ## Contributing
 
-Contributions welcome. Start by reading the relevant repo's README. Issues and discussions open on GitHub.
+Contributions welcome. Start by reading the README of the component you are touching (`api/`, `ui/`, `agent/`, `platform/`). Issues and discussions open on GitHub.
 
 ---
 
