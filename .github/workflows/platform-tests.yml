@@ -1,0 +1,51 @@
+---
+name: Platform Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'platform/**'
+      - 'agent/**'
+      - '.github/workflows/platform-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'platform/**'
+      - 'agent/**'
+      - '.github/workflows/platform-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Every tool installed here is invoked by platform/scripts/run-tests.sh
+      # below: ansible-playbook and ansible-lint for the syntax check and the two
+      # lint passes. run-tests.sh prefers them from $PATH and falls back to its
+      # container image, so installing them here keeps this job from pulling
+      # images on every run.
+      #
+      # shellcheck is deliberately NOT installed: the shell step is a ratchet on
+      # a finding COUNT, so it always runs the version pinned in run-tests.sh.
+      # The distribution package is older and reports a different number, which
+      # would fail the ratchet for a reason that is not a regression.
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible-core ansible-lint
+
+      - name: Run the platform test suite
+        working-directory: platform
+        run: ./scripts/run-tests.sh

@@ -1,5 +1,11 @@
 name: Security Baseline
 
+# Fusion des quatre security-baseline.yml des anciens dépôts.
+# Les trois jobs transverses (dependency-review, secret-scan, filesystem-vuln-scan)
+# étaient strictement identiques dans les quatre : ils couvrent désormais tout
+# l'arbre en une seule passe. Les deux jobs Python restent distincts parce que
+# leurs cibles bandit et leurs requirements.txt diffèrent.
+
 on:
   pull_request:
     branches: [main]
@@ -35,13 +41,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  python-sast-and-deps:
+  api-sast-and-deps:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install security tooling
@@ -49,9 +55,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install pip-audit bandit
       - name: Dependency vulnerability scan (pip-audit)
-        run: pip-audit -r requirements.txt
+        run: pip-audit -r api/requirements.txt
       - name: SAST scan (Bandit)
-        run: bandit -r . -x ./static,./templates -q -ll
+        run: bandit -r api/app -q -ll
+
+  ui-sast-and-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install security tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit bandit
+      - name: Dependency vulnerability scan (pip-audit)
+        run: pip-audit -r ui/requirements.txt
+      - name: SAST scan (Bandit)
+        run: bandit -r ui -x ./ui/static,./ui/templates -q -ll
 
   filesystem-vuln-scan:
     runs-on: ubuntu-latest

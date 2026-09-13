@@ -1,0 +1,56 @@
+---
+name: API Tests
+
+# La suite pytest complète de api/, y compris ses assertions inter-dossiers :
+# le contrat d'identité d'appareil se lit dans agent/ et platform/, qui sont
+# désormais des dossiers du même dépôt.
+#
+# Contrepartie de security-regression-stack.yml, qui exécute
+# `pytest -q -m security tests` DANS l'image conteneur fleet-api. Cette image ne
+# contient que /app : les tests marqués `crossrepo` ne peuvent pas y tourner —
+# et ils ne sont, délibérément, pas marqués `security`.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'agent/**'
+      - 'platform/**'
+      - 'ui/**'
+      - '.github/workflows/api-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'agent/**'
+      - 'platform/**'
+      - 'ui/**'
+      - '.github/workflows/api-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create the virtualenv
+        working-directory: api
+        run: |
+          python3 -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt
+
+      - name: Run the test suite
+        working-directory: api
+        run: ./.venv/bin/python -m pytest

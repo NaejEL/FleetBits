@@ -3,8 +3,18 @@ name: Security Regression (Integration Stack)
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'api/**'
+      - 'platform/**'
+      - 'agent/**'
+      - '.github/workflows/security-regression-stack.yml'
   push:
     branches: [main]
+    paths:
+      - 'api/**'
+      - 'platform/**'
+      - 'agent/**'
+      - '.github/workflows/security-regression-stack.yml'
   workflow_dispatch:
 
 permissions:
@@ -16,55 +26,13 @@ jobs:
     timeout-minutes: 35
 
     steps:
-      - name: Checkout FleetBits API
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Resolve the platform branch
-        id: platform_ref
-        env:
-          # github.head_ref is empty outside a pull_request event — and observed
-          # empty on a re-run of one — which silently fell back to main. The PR
-          # payload carries the branch in a field that survives both, and
-          # ref_name covers a manual workflow_dispatch on the branch.
-          HEAD_REF: ${{ github.head_ref || github.event.pull_request.head.ref || github.ref_name }}
-        run: |
-          # The compose stack lives in FleetBits-platform, and a change that
-          # spans both repositories must be tested against the matching side.
-          # Taking main here started fleet-api without FLEET_DOMAIN, which it
-          # now requires at start-up: the container restart-looped and the
-          # readiness probe timed out, for a reason that is not a defect.
-          url="https://github.com/${{ github.repository_owner }}/FleetBits-platform.git"
-          if [ -n "${HEAD_REF}" ] \
-             && git ls-remote --exit-code --heads "$url" "${HEAD_REF}" >/dev/null 2>&1; then
-            echo "Platform: using ${HEAD_REF}"
-            echo "ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
-          else
-            echo "Platform: using main"
-            echo "ref=main" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout FleetBits Platform (compose stack)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/FleetBits-platform
-          ref: ${{ steps.platform_ref.outputs.ref }}
-          path: FleetBits-platform
-
-      - name: Materialize sibling path expected by compose build context
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p FleetBits-api
-          rsync -a --delete \
-            --exclude '.git' \
-            --exclude 'FleetBits-platform' \
-            --exclude 'FleetBits-api' \
-            ./ FleetBits-api/
 
       - name: Create CI env file for compose
         shell: bash
         run: |
-          cat > FleetBits-platform/secrets.ci.env <<'EOF'
+          cat > platform/secrets.ci.env <<'EOF'
           FLEET_DOMAIN=localhost
           POSTGRES_PASSWORD=postgres-ci-password
           FLEET_DB_PASSWORD=fleet-ci-password
@@ -101,7 +69,7 @@ jobs:
       - name: Create CI caddyfile and compose override
         shell: bash
         run: |
-          cat > FleetBits-platform/docker/caddy/Caddyfile.ci <<'EOF'
+          cat > platform/docker/caddy/Caddyfile.ci <<'EOF'
           :80 {
               handle /metrics {
                   respond 403
@@ -173,7 +141,7 @@ jobs:
           }
           EOF
 
-          cat > FleetBits-platform/docker/docker-compose.ci.override.yml <<'EOF'
+          cat > platform/docker/docker-compose.ci.override.yml <<'EOF'
           services:
             caddy:
               command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
@@ -184,7 +152,7 @@ jobs:
 
             fleet-api:
               build:
-                context: ../../FleetBits-api
+                context: ../../api
                 dockerfile: Dockerfile
               image: fleetbits-api:ci
               environment:
@@ -214,7 +182,7 @@ jobs:
           EOF
 
       - name: Start integration stack
-        working-directory: FleetBits-platform/docker
+        working-directory: platform/docker
         shell: bash
         run: |
           set -euo pipefail
@@ -226,7 +194,7 @@ jobs:
             postgresql prometheus loki fleet-api aptly-api caddy edge-sim
 
       - name: Wait for API and edge simulator readiness
-        working-directory: FleetBits-platform/docker
+        working-directory: platform/docker
         shell: bash
         run: |
           set -euo pipefail
@@ -273,7 +241,7 @@ jobs:
           PY
 
       - name: Run security regression suite
-        working-directory: FleetBits-platform/docker
+        working-directory: platform/docker
         shell: bash
         run: |
           set -euo pipefail
@@ -286,7 +254,7 @@ jobs:
 
       - name: Dump compose logs on failure
         if: failure()
-        working-directory: FleetBits-platform/docker
+        working-directory: platform/docker
         shell: bash
         run: |
           docker compose \
@@ -297,7 +265,7 @@ jobs:
 
       - name: Tear down integration stack
         if: always()
-        working-directory: FleetBits-platform/docker
+        working-directory: platform/docker
         shell: bash
         run: |
           docker compose \

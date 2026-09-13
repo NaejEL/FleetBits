@@ -4,8 +4,14 @@ name: Agent Tests
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/agent-tests.yml'
   push:
     branches: [main]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/agent-tests.yml'
   workflow_dispatch:
 
 permissions:
@@ -24,4 +30,5 @@ jobs:
           sudo apt-get install -y --no-install-recommends shellcheck bats
 
       - name: Run the agent test suite
+        working-directory: agent
         run: ./scripts/run-tests.sh

@@ -28,7 +28,7 @@ jobs:
             const pr = context.payload.pull_request;
             const { owner, repo } = context.repo;
             core.setOutput('ready', 'false');
-            
+
             // Wait for up to 10 minutes for checks to complete
             for (let i = 0; i < 60; i++) {
               const checks = await github.rest.checks.listForRef({
@@ -36,30 +36,30 @@ jobs:
                 repo,
                 ref: pr.head.sha
               });
-              
+
               const allPassed = checks.data.check_runs
                 .filter(check => !check.name.includes('Skip') && check.name !== 'Auto-approve Dependabot PRs')
                 .every(check => check.conclusion === 'success' || check.status !== 'completed');
-              
+
               const anyFailed = checks.data.check_runs
                 .filter(check => !check.name.includes('Skip'))
                 .some(check => check.conclusion === 'failure');
-              
+
               if (anyFailed) {
                 core.info('At least one required check failed; skipping auto-approve for this run.');
                 return;
               }
-              
+
               if (allPassed && checks.data.check_runs.length > 0) {
                 core.setOutput('ready', 'true');
                 return;
               }
-              
+
               if (i === 59) {
                 core.warning('Checks still pending after 10 minutes');
                 return;
               }
-              
+
               await new Promise(resolve => setTimeout(resolve, 10000));
             }
 
