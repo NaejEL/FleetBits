@@ -19,12 +19,35 @@ jobs:
       - name: Checkout FleetBits API
         uses: actions/checkout@v4
 
+      - name: Resolve the platform branch
+        id: platform_ref
+        env:
+          # github.head_ref is empty outside a pull_request event — and observed
+          # empty on a re-run of one — which silently fell back to main. The
+          # PR payload carries the branch in a field that survives both.
+          HEAD_REF: ${{ github.head_ref || github.event.pull_request.head.ref }}
+        run: |
+          # The compose stack lives in FleetBits-platform, and a change that
+          # spans both repositories must be tested against the matching side.
+          # Taking main here started fleet-api without FLEET_DOMAIN, which it
+          # now requires at start-up: the container restart-looped and the
+          # readiness probe timed out, for a reason that is not a defect.
+          url="https://github.com/${{ github.repository_owner }}/FleetBits-platform.git"
+          if [ -n "${HEAD_REF}" ] \
+             && git ls-remote --exit-code --heads "$url" "${HEAD_REF}" >/dev/null 2>&1; then
+            echo "Platform: using ${HEAD_REF}"
+            echo "ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Platform: using main"
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout FleetBits Platform (compose stack)
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/FleetBits-platform
           path: FleetBits-platform
-          ref: ${{ github.head_ref || 'main' }}
+          ref: ${{ steps.platform_ref.outputs.ref }}
 
       - name: Materialize sibling path expected by compose build context
         shell: bash
