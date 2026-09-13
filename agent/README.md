@@ -1,6 +1,6 @@
 ﻿# FleetBits Agent
 
-> **Operator?** You don't need to read this repo to enroll devices. Go to the [enrollment guide](../FleetBits-platform/docs/enrolling/) instead. This README is for people who want to understand, build, or modify the agent itself.
+> **Operator?** You don't need to read this repo to enroll devices. Go to the [enrollment guide](../platform/docs/enrolling/) instead. This README is for people who want to understand, build, or modify the agent itself.
 
 `fleet-agent` is the small software package that runs on every edge device in your fleet (Raspberry Pi, mini-PC, x86 server). Install it once — via a golden SD card image or `apt install` — and the device immediately starts reporting to your FleetBits control plane.
 
@@ -31,7 +31,7 @@ The **recommended way** is through the Fleet UI — no terminal needed:
    - Click "Next" → "Edit Settings" → then scroll to **Custom files** → add `fleet-provision.json` to `/boot/firmware/`
 5. Insert the SD card and power on — the device appears in Fleet UI within 60 seconds
 
-For replacing a failed device, replacing an SD card, or bulk-enrolling an existing fleet, see the detailed guides in [FleetBits-platform/docs/enrolling/](../FleetBits-platform/docs/enrolling/).
+For replacing a failed device, replacing an SD card, or bulk-enrolling an existing fleet, see the detailed guides in [platform/docs/enrolling/](../platform/docs/enrolling/).
 
 ---
 
@@ -79,10 +79,10 @@ No operator action required. Devices update through the ring deployment process 
 
 ---
 
-## Repository layout (for contributors)
+## Folder layout (for contributors)
 
 ```
-FleetBits-agent/
+agent/
 ├── etc/fleet/
 │   └── device-identity.conf.example    identity template
 ├── usr/lib/fleet-agent/
@@ -200,7 +200,7 @@ can spell the name of another placeholder — a chain of `sed -e` expressions, a
 applying to the same line, would then expand it a second time and could ship the
 device bearer token out as a telemetry label.
 
-Key list source of truth: `FleetBits-api/app/contracts/device_identity.py`.
+Key list source of truth: `api/app/contracts/device_identity.py`.
 The three producers — the Fleet API route `POST /api/v1/devices/{device_id}/provision`,
 the Ansible `fleet_agent` role, and `container-entrypoint.sh` — emit the same keys.
 

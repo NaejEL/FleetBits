@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Contract conformance inside FleetBits-agent — acceptance criteria 5 (agent
+# Contract conformance inside agent/ — acceptance criteria 5 (agent
 # side), 16, 18, 19 and 20.
 
 setup() {

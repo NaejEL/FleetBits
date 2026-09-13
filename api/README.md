@@ -40,21 +40,21 @@ Built with **FastAPI** + **SQLAlchemy 2 (async)** + **Alembic** + **PostgreSQL 1
 
 ### Quickest setup
 
-Run the platform dev-setup script from the sibling `FleetBits-platform` repo — it writes `FleetBits-api/.env` and starts all dependencies:
+Run the platform dev-setup script from `platform/` — it writes `api/.env` and starts all dependencies:
 
 ```powershell
 # Windows
-cd .\FleetBits-platform; .\dev-setup.ps1
+cd ..\platform; .\dev-setup.ps1
 ```
 ```bash
 # Linux / macOS
-cd FleetBits-platform && ./dev-setup.sh
+cd ../platform && ./dev-setup.sh
 ```
 
 ### Manual setup
 
 ```bash
-cd FleetBits-api
+cd api
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -86,11 +86,11 @@ Two things to know about the interpreter and the markers:
   the CI workflows use. `pydantic==2.10.3` publishes no wheel for 3.13/3.14, so
   on a newer interpreter the install fails while building `pydantic-core`.
   Modernising the dependency set is separate work.
-* Tests marked **`crossrepo`** read `FleetBits-agent`, `FleetBits-platform` and
-  `FleetBits-ui` from the common working root, so check the four repositories out
-  side by side. They are deliberately *not* marked `security`: the security suite
-  runs inside the `fleet-api` container image, which holds `/app` alone.
-  `.github/workflows/api-tests.yml` runs the full suite with all four checked out.
+* Tests marked **`crossrepo`** read `agent/`, `platform/` and `ui/`, the sibling
+  folders of this one in the monorepo. They are deliberately *not* marked
+  `security`: the security suite runs inside the `fleet-api` container image,
+  which holds `/app` alone. `.github/workflows/api-tests.yml` runs the full suite
+  over the whole checkout.
 
 ### Security contributor guardrails
 
@@ -122,7 +122,7 @@ pre-commit run --files $(git ls-files -co --exclude-standard)
 For security regressions, validate through the containerized path (no ad-hoc host package installs):
 
 ```bash
-cd ../FleetBits-platform/docker
+cd ../platform/docker
 docker compose --env-file ../secrets.env exec -T fleet-api sh -lc "cd /app && python -m pytest -q -m security tests/test_security_*.py -rs"
 ```
 

@@ -10,7 +10,7 @@
 #
 # What this script does:
 #   1. Installs Docker CE + Docker Compose v2
-#   2. Clones FleetBits-platform from GitHub
+#   2. Clones the FleetBits monorepo from GitHub
 #   3. Generates all secrets (passwords, JWT keys, etc.)
 #   4. Writes secrets.env and docker-compose.override.behind-proxy.yml
 #   5. Starts the Docker Compose stack
@@ -33,8 +33,8 @@ FLEET_DOMAIN="${FLEET_DOMAIN}"
 GITHUB_OWNER="${GITHUB_OWNER:-}"
 INSTALL_DIR="/opt/fleetbits"
 [[ -n "${GITHUB_OWNER}" ]] || error "GITHUB_OWNER is not set. Export GITHUB_OWNER before running the installer."
-PLATFORM_REPO="https://github.com/${GITHUB_OWNER}/FleetBits-platform.git"
-COMPOSE_DIR="${INSTALL_DIR}/FleetBits-platform/docker"
+FLEETBITS_REPO="https://github.com/${GITHUB_OWNER}/FleetBits.git"
+COMPOSE_DIR="${INSTALL_DIR}/FleetBits/platform/docker"
 
 # ── System packages ────────────────────────────────────────────────────────────
 info "Installing system dependencies..."
@@ -65,15 +65,15 @@ else
 fi
 
 # ── Clone platform repo ────────────────────────────────────────────────────────
-info "Cloning FleetBits-platform..."
+info "Cloning FleetBits..."
 mkdir -p "${INSTALL_DIR}"
-if [ -d "${INSTALL_DIR}/FleetBits-platform" ]; then
+if [ -d "${INSTALL_DIR}/FleetBits" ]; then
     warn "Repository already exists, pulling latest..."
-    git -C "${INSTALL_DIR}/FleetBits-platform" pull --ff-only
+    git -C "${INSTALL_DIR}/FleetBits" pull --ff-only
 else
-    git clone "${PLATFORM_REPO}" "${INSTALL_DIR}/FleetBits-platform"
+    git clone "${FLEETBITS_REPO}" "${INSTALL_DIR}/FleetBits"
 fi
-success "Repository ready at ${INSTALL_DIR}/FleetBits-platform"
+success "Repository ready at ${INSTALL_DIR}/FleetBits"
 
 # ── Generate secrets ───────────────────────────────────────────────────────────
 info "Generating secrets..."
@@ -277,7 +277,7 @@ echo "root:${ROOT_PASSWORD}" | chpasswd
 success "Root password set."
 
 # ── Install update script ──────────────────────────────────────────────────────
-cp "${INSTALL_DIR}/FleetBits-platform/scripts/update.sh" /usr/local/bin/fleetbits-update
+cp "${INSTALL_DIR}/FleetBits/platform/scripts/update.sh" /usr/local/bin/fleetbits-update
 chmod +x /usr/local/bin/fleetbits-update
 success "Update script installed at /usr/local/bin/fleetbits-update"
 
@@ -378,22 +378,17 @@ if [[ "${ENROLL_VPS,,}" == "y" ]]; then
     info "Re-checking Fleet API readiness before enrollment..."
     if ! curl -sf http://localhost:8000/healthz &>/dev/null; then
         warn "Fleet API still not reachable. Skipping enrollment for now."
-        warn "Retry later with: bash ${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh --api-url http://localhost:8000 --secrets ${INSTALL_DIR}/FleetBits-platform/secrets.env"
+        warn "Retry later with: bash ${INSTALL_DIR}/FleetBits/platform/scripts/enroll-vps.sh --api-url http://localhost:8000 --secrets ${INSTALL_DIR}/FleetBits/platform/secrets.env"
         exit 0
     fi
 
-    info "Cloning FleetBits-agent (required to build the vps-device container)..."
-    if [ -d "${INSTALL_DIR}/FleetBits-agent" ]; then
-        git -C "${INSTALL_DIR}/FleetBits-agent" pull --ff-only
-    else
-        git clone "https://github.com/${GITHUB_OWNER}/FleetBits-agent.git" "${INSTALL_DIR}/FleetBits-agent"
-    fi
-    success "FleetBits-agent cloned."
+    # The agent source tree the vps-device image is built from lives in
+    # agent/ of this same checkout — nothing else to clone.
 
     info "Running VPS enrollment script..."
-    bash "${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh" \
+    bash "${INSTALL_DIR}/FleetBits/platform/scripts/enroll-vps.sh" \
         --api-url http://localhost:8000 \
-        --secrets "${INSTALL_DIR}/FleetBits-platform/secrets.env"
+        --secrets "${INSTALL_DIR}/FleetBits/platform/secrets.env"
 
     info "Starting vps-device container..."
     cd "${COMPOSE_DIR}"
@@ -411,5 +406,5 @@ if [[ "${ENROLL_VPS,,}" == "y" ]]; then
     success "fleetbits.service updated — vps-device will auto-start on reboot."
 else
     info "Skipped. To enable VPS self-monitoring later, run:"
-    echo "  bash ${INSTALL_DIR}/FleetBits-platform/scripts/enroll-vps.sh"
+    echo "  bash ${INSTALL_DIR}/FleetBits/platform/scripts/enroll-vps.sh"
 fi

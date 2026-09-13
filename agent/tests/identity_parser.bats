@@ -154,7 +154,7 @@ parse_in_locale() {
   # in accented letters, and 'rôle' was accepted here while the Python contract
   # rejected it. fleet_identity_set pins LC_ALL=C for the comparison. The
   # authoritative multi-locale cross-check is
-  # FleetBits-api tests/test_device_identity_contract.py
+  # api/tests/test_device_identity_contract.py
   # ::test_python_and_bash_validators_agree_on_every_probe; this is the guard on
   # the agent side. On a C-only runtime the loop simply re-runs the C verdict —
   # it can never fail for the wrong reason.

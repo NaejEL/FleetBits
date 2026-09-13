@@ -2,7 +2,7 @@
 
 Single producer for the "server path" of the contract declared in
 ``app.contracts.device_identity``. The host names and paths below are the ones
-actually exposed by ``FleetBits-platform/docker/caddy/Caddyfile``; changing one
+actually exposed by ``platform/docker/caddy/Caddyfile``; changing one
 without the other breaks ``tests/test_device_identity_contract.py``.
 """
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 # scripts/run-tests.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Single entry point for the FleetBits-agent test suite:
-#   1. shellcheck over every shell script in the repository
+# Single entry point for the agent/ test suite:
+#   1. shellcheck over every shell script in agent/
 #   2. the bats suite in tests/
 #
 # Both tools are taken from $PATH when installed and from their official

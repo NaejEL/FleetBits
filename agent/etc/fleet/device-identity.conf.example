@@ -12,7 +12,7 @@
 #   - empty values are accepted only for:
 #     PROFILE, REPO_BASIC_TOKEN, HEADSCALE_PREAUTH_KEY, MQTT_USERNAME, MQTT_PASSWORD
 #
-# Key list source of truth: FleetBits-api/app/contracts/device_identity.py
+# Key list source of truth: api/app/contracts/device_identity.py
 # Produced identically by: the Fleet API provisioning route, the Ansible
 # fleet_agent role, and container-entrypoint.sh.
 #

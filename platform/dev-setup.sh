@@ -55,12 +55,12 @@ read_env() {
 }
 
 
-# ── Locate repos ──────────────────────────────────────────────────────────────
+# ── Locate the monorepo folders ──────────────────────────────────────────────────────────────
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="$REPO_ROOT/docker"
-API_REPO="$(dirname "$REPO_ROOT")/FleetBits-api"
-UI_REPO="$(dirname "$REPO_ROOT")/FleetBits-ui"
+API_DIR="$(dirname "$REPO_ROOT")/api"
+UI_DIR="$(dirname "$REPO_ROOT")/ui"
 SECRETS_ENV="$REPO_ROOT/secrets.env"
 OVERRIDE="$DOCKER_DIR/docker-compose.override.yml"
 OVERRIDE_EXMP="$DOCKER_DIR/docker-compose.override.yml.example"
@@ -69,7 +69,7 @@ echo ""
 echo -e "${WHITE}FleetBits — Local Dev Setup${RESET}"
 echo "Platform root : $REPO_ROOT"
 echo "Docker dir    : $DOCKER_DIR"
-echo "API repo      : $API_REPO"
+echo "API dir       : $API_DIR"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 
@@ -87,21 +87,21 @@ ok "Docker is running"
 ok "docker/ directory found"
 
 API_AVAILABLE=0
-if [[ -d "$API_REPO" ]]; then
-    ok "FleetBits-api repo found"
+if [[ -d "$API_DIR" ]]; then
+    ok "api/ found"
     API_AVAILABLE=1
 else
-    echo -e "    ${YELLOW}WARNING: FleetBits-api repo not found at $API_REPO${RESET}"
+    echo -e "    ${YELLOW}WARNING: api/ not found at $API_DIR${RESET}"
     echo    "             The fleet-api container will NOT be built from source."
-    echo    "             Clone it as a sibling to FleetBits-platform and re-run."
+    echo    "             Run this from a complete FleetBits checkout."
 fi
 
 UI_AVAILABLE=0
-if [[ -d "$UI_REPO" ]]; then
-    ok "FleetBits-ui repo found"
+if [[ -d "$UI_DIR" ]]; then
+    ok "ui/ found"
     UI_AVAILABLE=1
 else
-    echo -e "    ${YELLOW}WARNING: FleetBits-ui repo not found at $UI_REPO${RESET}"
+    echo -e "    ${YELLOW}WARNING: ui/ not found at $UI_DIR${RESET}"
 fi
 
 # ── Generate secrets ──────────────────────────────────────────────────────────
@@ -222,13 +222,13 @@ else
     warn "docker-compose.override.yml already exists — not changed (pass --force to reset)"
 fi
 
-# ── Write FleetBits-api/.env ──────────────────────────────────────────────────
+# ── Write api/.env ──────────────────────────────────────────────────
 
 if [[ "$API_AVAILABLE" -eq 1 ]]; then
-    step "Writing FleetBits-api/.env"
-    API_ENV="$API_REPO/.env"
+    step "Writing api/.env"
+    API_ENV="$API_DIR/.env"
     if [[ -f "$API_ENV" && "$FORCE" -eq 0 ]]; then
-        warn "FleetBits-api/.env already exists — not changed (pass --force to overwrite)"
+        warn "api/.env already exists — not changed (pass --force to overwrite)"
     else
         cat > "$API_ENV" <<EOF
 # FleetBits API — local dev
@@ -264,17 +264,17 @@ GRAFANA_INTERNAL_URL=http://localhost:3000
 GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
 GRAFANA_PROXY_SECRET=${GRAFANA_PROXY_SECRET}
 EOF
-        ok "FleetBits-api/.env written"
+        ok "api/.env written"
     fi
 fi
 
-# ── Write FleetBits-ui/.env ───────────────────────────────────────────────────
+# ── Write ui/.env ───────────────────────────────────────────────────
 
 if [[ "$UI_AVAILABLE" -eq 1 ]]; then
-    step "Writing FleetBits-ui/.env"
-    UI_ENV="$UI_REPO/.env"
+    step "Writing ui/.env"
+    UI_ENV="$UI_DIR/.env"
     if [[ -f "$UI_ENV" && "$FORCE" -eq 0 ]]; then
-        warn "FleetBits-ui/.env already exists — not changed (pass --force to overwrite)"
+        warn "ui/.env already exists — not changed (pass --force to overwrite)"
     else
         cat > "$UI_ENV" <<EOF
 # FleetBits UI — local dev
@@ -289,7 +289,7 @@ FLEET_DOMAIN=localhost
 FLEET_ENV=development
 FLASK_DEBUG=true
 EOF
-        ok "FleetBits-ui/.env written"
+        ok "ui/.env written"
     fi
 fi
 

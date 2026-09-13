@@ -2,7 +2,7 @@
 
 Operator web interface for the FleetBits fleet management platform.
 
-> **Non-devops user?** This is the app you use every day to manage your fleet. Read the [UI walkthrough](../FleetBits-platform/docs/ui-guide.md) for a screenshot-driven guide. This README is for developers contributing to or deploying the UI.
+> **Non-devops user?** This is the app you use every day to manage your fleet. Read the [UI walkthrough](../platform/docs/ui-guide.md) for a screenshot-driven guide. This README is for developers contributing to or deploying the UI.
 
 Built with **Flask 3.1** + **Jinja2** — no npm, no build step, no frontend framework.
 
@@ -56,17 +56,17 @@ Everything you need to run your fleet, from a single browser tab:
 ### Prerequisites
 
 - Python 3.11+
-- Fleet API running (start the full stack with `FleetBits-platform/dev-setup.ps1`)
+- Fleet API running (start the full stack with `platform/dev-setup.ps1`)
 
 ### Quickest setup
 
 ```powershell
 # Windows — starts everything including the UI
-cd .\FleetBits-platform; .\dev-setup.ps1
+cd ..\platform; .\dev-setup.ps1
 ```
 ```bash
 # Linux / macOS
-cd FleetBits-platform && ./dev-setup.sh
+cd ../platform && ./dev-setup.sh
 ```
 
 Then open **http://localhost** (via Caddy) or **http://localhost:5000** (direct Flask).
@@ -74,7 +74,7 @@ Then open **http://localhost** (via Caddy) or **http://localhost:5000** (direct 
 ### Manual setup
 
 ```bash
-cd FleetBits-ui
+cd ui
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt

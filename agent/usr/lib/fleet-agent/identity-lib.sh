@@ -10,9 +10,9 @@
 # of the allowed character set.
 #
 # Contract source of truth:
-#   FleetBits-api/app/contracts/device_identity.py
+#   api/app/contracts/device_identity.py
 # The lists below are a DUPLICATE of that module, kept honest by the cross-repo
-# key-set comparison test (FleetBits-api/tests/test_device_identity_contract.py
+# key-set comparison test (api/tests/test_device_identity_contract.py
 # and tests/identity_contract.bats here).
 #
 # After a successful parse each key K is available as ${FLEET_ID_K}. The prefix
@@ -102,7 +102,7 @@ fleet_identity_set() {
   # locale, so the same pattern does not decide the same thing everywhere: under
   # a glibc UTF-8 locale 'A-Z' and 'a-z' sweep in accented letters, and 'rôle'
   # or 'aé' were ACCEPTED here while the Python contract
-  # (FleetBits-api/app/contracts/device_identity.py, re.match on the identical
+  # (api/app/contracts/device_identity.py, re.match on the identical
   # spelling) rejected them. None of the consumers pins a locale — the systemd
   # units and container-entrypoint.sh inherit whatever the host has — so the
   # verdict was a property of the machine, not of the contract.

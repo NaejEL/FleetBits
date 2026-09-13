@@ -4,7 +4,7 @@
 # =============================================================================
 # Run this script on your Proxmox VE host shell:
 #
-#   GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/ct/fleetbits.sh)"
+#   GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits/main/platform/scripts/proxmox/ct/fleetbits.sh)"
 #
 # What this script does:
 #   1. Downloads a Debian 12 LXC template (if not already present)
@@ -153,7 +153,7 @@ done
 
 # ── Run the install script inside the container ────────────────────────────────
 info "Transferring install script to CT${CTID}..."
-INSTALL_SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/FleetBits-platform/main/scripts/proxmox/install/fleetbits-install.sh"
+INSTALL_SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/FleetBits/main/platform/scripts/proxmox/install/fleetbits-install.sh"
 
 pct exec "${CTID}" -- bash -c "
     apt-get update -qq && apt-get install -y -qq curl
@@ -326,7 +326,7 @@ case "${PROXY_CHOICE,,}" in
     else
         info "nginx and certbot are already installed."
     fi
-    NGINX_CONF_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/FleetBits-platform/main/scripts/proxmox/nginx-example.conf"
+    NGINX_CONF_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/FleetBits/main/platform/scripts/proxmox/nginx-example.conf"
     NGINX_DEST="/etc/nginx/sites-available/fleetbits"
     info "Downloading nginx config template..."
     curl -fsSL "${NGINX_CONF_URL}" -o "${NGINX_DEST}.tmp" \

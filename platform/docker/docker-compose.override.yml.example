@@ -60,7 +60,7 @@ services:
   fleet-api:
     # Build from sibling repo instead of pulling from registry
     build:
-      context: ../../FleetBits-api
+      context: ../../api
       dockerfile: Dockerfile
     image: fleetbits-api:dev
     ports:
@@ -73,7 +73,7 @@ services:
   fleet-ui:
     # Build from sibling repo instead of pulling from registry
     build:
-      context: ../../FleetBits-ui
+      context: ../../ui
       dockerfile: Dockerfile
     image: fleetbits-ui:dev
     ports:

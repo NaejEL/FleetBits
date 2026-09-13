@@ -1,4 +1,4 @@
-"""Device identity contract — FleetBits-platform side (SPEC-contrat-identite-appareil).
+"""Device identity contract — platform/ side (SPEC-contrat-identite-appareil).
 
 Covers acceptance criteria 5 (automation producer), 7, 9, 15, 16, 17 and 20.
 
@@ -6,18 +6,17 @@ What these tests actually read, stated exactly, because the name "contract
 tests" invites a larger claim than the files support:
 
 * the **platform** side — the Ansible template, the role tasks, group_vars, the
-  diagnostics playbook and docker-compose.yml — from this repository;
+  diagnostics playbook and docker-compose.yml — from ``platform/``;
 * the **agent** side — ``identity-lib.sh`` (the strict parser and the key list),
   ``generate-config.sh``, ``firstboot.sh`` and ``container-entrypoint.sh`` — from
-  the sibling ``FleetBits-agent`` checkout, which the CI workflow checks out
-  alongside this one.
+  ``agent/``, the sibling folder of the same repository.
 
-``FleetBits-api/app/contracts/device_identity.py`` is the contract's source of
-truth, and it is **not read here**: ``contract_keys()`` below reads the
-agent-side copy in ``identity-lib.sh``. Keeping that copy equal to the Python
-module is the job of ``FleetBits-api/tests/test_device_identity_contract.py``,
-in the repository that owns it. So a divergence between THIS repository and the
-agent fails here; a divergence between the agent and the API fails there.
+``api/app/contracts/device_identity.py`` is the contract's source of truth, and
+it is **not read here**: ``contract_keys()`` below reads the agent-side copy in
+``identity-lib.sh``. Keeping that copy equal to the Python module is the job of
+``api/tests/test_device_identity_contract.py``. So a divergence between
+``platform/`` and ``agent/`` fails here; a divergence between ``agent/`` and
+``api/`` fails there.
 """
 
 from __future__ import annotations
@@ -32,21 +31,21 @@ import pytest
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, meta
 
-PLATFORM_REPO = Path(__file__).resolve().parents[1]
-WORK_ROOT = PLATFORM_REPO.parent
-AGENT_REPO = WORK_ROOT / "FleetBits-agent"
+PLATFORM_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = PLATFORM_DIR.parent
+AGENT_DIR = REPO_ROOT / "agent"
 
-IDENTITY_LIB = AGENT_REPO / "usr" / "lib" / "fleet-agent" / "identity-lib.sh"
-CONTAINER_ENTRYPOINT = AGENT_REPO / "container-entrypoint.sh"
-TEMPLATE_DIR = PLATFORM_REPO / "ansible" / "roles" / "fleet_agent" / "templates"
+IDENTITY_LIB = AGENT_DIR / "usr" / "lib" / "fleet-agent" / "identity-lib.sh"
+CONTAINER_ENTRYPOINT = AGENT_DIR / "container-entrypoint.sh"
+TEMPLATE_DIR = PLATFORM_DIR / "ansible" / "roles" / "fleet_agent" / "templates"
 TEMPLATE_NAME = "device-identity.conf.j2"
-ROLE_TASKS = PLATFORM_REPO / "ansible" / "roles" / "fleet_agent" / "tasks" / "main.yml"
-GROUP_VARS = PLATFORM_REPO / "ansible" / "group_vars" / "all" / "vars.yml"
-DIAGNOSTICS = PLATFORM_REPO / "ansible" / "playbooks" / "collect_diagnostics.yml"
-COMPOSE = PLATFORM_REPO / "docker" / "docker-compose.yml"
-FIRSTBOOT = AGENT_REPO / "usr" / "lib" / "fleet-agent" / "firstboot.sh"
-GENERATE_CONFIG = AGENT_REPO / "usr" / "lib" / "fleet-agent" / "generate-config.sh"
-ANSIBLE_DIR = PLATFORM_REPO / "ansible"
+ROLE_TASKS = PLATFORM_DIR / "ansible" / "roles" / "fleet_agent" / "tasks" / "main.yml"
+GROUP_VARS = PLATFORM_DIR / "ansible" / "group_vars" / "all" / "vars.yml"
+DIAGNOSTICS = PLATFORM_DIR / "ansible" / "playbooks" / "collect_diagnostics.yml"
+COMPOSE = PLATFORM_DIR / "docker" / "docker-compose.yml"
+FIRSTBOOT = AGENT_DIR / "usr" / "lib" / "fleet-agent" / "firstboot.sh"
+GENERATE_CONFIG = AGENT_DIR / "usr" / "lib" / "fleet-agent" / "generate-config.sh"
+ANSIBLE_DIR = PLATFORM_DIR / "ansible"
 BOOTSTRAP_PLAYBOOK = ANSIBLE_DIR / "playbooks" / "bootstrap_device.yml"
 
 # A representative inventory for an edge device, as group_vars + host_vars
@@ -78,8 +77,8 @@ INVENTORY_VARS = {
 
 def read(path: Path) -> str:
     assert path.is_file(), (
-        f"{path} is missing. The device identity contract spans three repositories; "
-        f"they must all be checked out under {WORK_ROOT}."
+        f"{path} is missing. The device identity contract spans three components of "
+        f"the monorepo; they must all be present under {REPO_ROOT}."
     )
     return path.read_text(encoding="utf-8")
 
@@ -125,9 +124,9 @@ def keys_of(rendered: str) -> list[str]:
 
 
 def run_agent_parser(identity_file: Path) -> subprocess.CompletedProcess:
-    """Feed a file to the real FleetBits-agent parser."""
+    """Feed a file to the real agent parser."""
     bash = shutil.which("bash")
-    assert bash, "bash is required to exercise the FleetBits-agent parser"
+    assert bash, "bash is required to exercise the agent parser"
     script = (
         f'set -euo pipefail\n. "{IDENTITY_LIB}"\n'
         f'fleet_identity_parse "{identity_file}"\n'
@@ -549,7 +548,7 @@ def test_vps_device_environment_produces_a_parseable_identity_file(tmp_path):
     env.update(resolved)
     env.update(
         {
-            "FLEET_AGENT_LIB_DIR": str(AGENT_REPO / "usr" / "lib" / "fleet-agent"),
+            "FLEET_AGENT_LIB_DIR": str(AGENT_DIR / "usr" / "lib" / "fleet-agent"),
             "FLEET_IDENTITY_FILE": str(identity_file),
             "FLEET_ALLOY_CONFIG": str(alloy_config),
             "FLEET_ALLOY_DATA_DIR": str(tmp_path / "alloy-data"),

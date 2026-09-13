@@ -29,8 +29,8 @@ fleet_agent_service:   "fleet-agent"
 fleet_agent_timer:     "fleet-heartbeat.timer"
 fleet_identity_path:   "/etc/fleet/device-identity.conf"
 # Keys of the device identity contract that carry a credential. Mirrors
-# FLEET_IDENTITY_SECRET_KEYS in FleetBits-agent/usr/lib/fleet-agent/identity-lib.sh
-# and SECRET_KEYS in FleetBits-api/app/contracts/device_identity.py.
+# FLEET_IDENTITY_SECRET_KEYS in agent/usr/lib/fleet-agent/identity-lib.sh
+# and SECRET_KEYS in api/app/contracts/device_identity.py.
 fleet_identity_secret_keys:
   - FLEET_AGENT_TOKEN
   - REPO_BASIC_TOKEN

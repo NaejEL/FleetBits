@@ -1,5 +1,5 @@
 ---
-# ansible-lint configuration — FleetBits-platform
+# ansible-lint configuration — platform/
 #
 # NOTHING is skipped here. The only setting below supplies a value for the
 # extra-var every operational playbook documents as REQUIRED at run time

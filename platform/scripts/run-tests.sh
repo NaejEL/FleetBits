@@ -1,7 +1,7 @@
 #!/bin/bash
 # scripts/run-tests.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Single entry point for the FleetBits-platform checks:
+# Single entry point for the platform/ checks:
 #   1. docker compose config -q                 — compose validation, base file
 #      and the CI override, which is the only real check that file ever gets
 #      (pre-commit can only run check-yaml --unsafe on it: it carries Compose's
@@ -51,8 +51,8 @@ ANSIBLE_LINT_IMAGE="${ANSIBLE_LINT_IMAGE:-pipelinecomponents/ansible-lint:latest
 # bump into a phantom regression. This is exactly how CI first reported 14
 # findings where a developer machine reported 11.
 SHELLCHECK_IMAGE="${SHELLCHECK_IMAGE:-koalaman/shellcheck:v0.11.0}"
-# The .gitignore of this repository does not ignore .venv/, so the virtualenv
-# lives beside the repository rather than inside it.
+# platform/.gitignore does not ignore .venv/, so the virtualenv
+# lives at the monorepo root rather than inside platform/.
 VENV="${FLEET_PLATFORM_VENV:-${REPO_ROOT}/../.venv-platform}"
 
 echo "── docker compose config ────────────────────────────────────────────────"

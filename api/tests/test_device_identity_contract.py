@@ -1,30 +1,28 @@
-"""Device identity contract — cross-repository conformance (SPEC-contrat-identite-appareil).
+"""Device identity contract — cross-component conformance (SPEC-contrat-identite-appareil).
 
 The contract declared in ``app.contracts.device_identity`` is the single source
 of truth for ``/etc/fleet/device-identity.conf``. These tests compare it against
-every other producer and consumer in the working root:
+every other producer and consumer of the monorepo:
 
-* ``FleetBits-agent/usr/lib/fleet-agent/identity-lib.sh``   (parser whitelist)
-* ``FleetBits-agent/container-entrypoint.sh``               (container producer)
-* ``FleetBits-platform/ansible/.../device-identity.conf.j2``(automation producer)
+* ``agent/usr/lib/fleet-agent/identity-lib.sh``              (parser whitelist)
+* ``agent/container-entrypoint.sh``                          (container producer)
+* ``platform/ansible/.../device-identity.conf.j2``           (automation producer)
 
-They deliberately reach into the sibling repositories: the four repositories are
-scheduled to merge into a monorepo, and until then a desynchronised repository
-must fail a test rather than a device. If a sibling is missing the tests fail —
-that is the intended signal, not a reason to skip.
+They deliberately reach into the sibling top-level folders of the same
+repository: a desynchronised component must fail a test rather than a device.
 
 Markers
 -------
-Every test that reads a sibling repository carries ``@pytest.mark.crossrepo``
-and, deliberately, NOT ``@pytest.mark.security``. The security marker selects the
+Every test that reads another component carries ``@pytest.mark.crossrepo`` and,
+deliberately, NOT ``@pytest.mark.security``. The security marker selects the
 suite that CI runs *inside the fleet-api container image*
 (``.github/workflows/security-regression-stack.yml``, ``docker compose exec
 fleet-api pytest -q -m security tests``); that image is built from the Dockerfile,
-which copies ``/app`` and nothing else, so no sibling repository exists there and
-a cross-repo test could only fail. The separation is not a weakening: the
-cross-repo tests run in full, siblings checked out, in
-``.github/workflows/api-tests.yml`` and in the documented local command
-``./.venv/bin/python -m pytest``. Nothing is skipped anywhere.
+which copies ``/app`` and nothing else, so no sibling folder exists there and a
+cross-component test could only fail. The separation is not a weakening: those
+tests run in full, over the whole checkout, in ``.github/workflows/api-tests.yml``
+and in the documented local command ``./.venv/bin/python -m pytest``. Nothing is
+skipped anywhere.
 """
 
 from __future__ import annotations
@@ -63,28 +61,28 @@ from app.services.device_identity import (
 )
 from app.services.token import create_provision_token, hash_token
 
-# ── Sibling repository layout ────────────────────────────────────────────────
+# ── Monorepo layout ──────────────────────────────────────────────────────────
 
-WORK_ROOT = Path(__file__).resolve().parents[2]
-AGENT_REPO = WORK_ROOT / "FleetBits-agent"
-PLATFORM_REPO = WORK_ROOT / "FleetBits-platform"
-API_REPO = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
+AGENT_DIR = REPO_ROOT / "agent"
+PLATFORM_DIR = REPO_ROOT / "platform"
+API_DIR = Path(__file__).resolve().parents[1]
 
-IDENTITY_LIB = AGENT_REPO / "usr" / "lib" / "fleet-agent" / "identity-lib.sh"
-CONTAINER_ENTRYPOINT = AGENT_REPO / "container-entrypoint.sh"
-FIRSTBOOT = AGENT_REPO / "usr" / "lib" / "fleet-agent" / "firstboot.sh"
+IDENTITY_LIB = AGENT_DIR / "usr" / "lib" / "fleet-agent" / "identity-lib.sh"
+CONTAINER_ENTRYPOINT = AGENT_DIR / "container-entrypoint.sh"
+FIRSTBOOT = AGENT_DIR / "usr" / "lib" / "fleet-agent" / "firstboot.sh"
 ANSIBLE_TEMPLATE = (
-    PLATFORM_REPO / "ansible" / "roles" / "fleet_agent" / "templates" / "device-identity.conf.j2"
+    PLATFORM_DIR / "ansible" / "roles" / "fleet_agent" / "templates" / "device-identity.conf.j2"
 )
-CADDYFILE = PLATFORM_REPO / "docker" / "caddy" / "Caddyfile"
-COMPOSE_FILE = PLATFORM_REPO / "docker" / "docker-compose.yml"
-DEVICES_ROUTER = API_REPO / "app" / "routers" / "devices.py"
+CADDYFILE = PLATFORM_DIR / "docker" / "caddy" / "Caddyfile"
+COMPOSE_FILE = PLATFORM_DIR / "docker" / "docker-compose.yml"
+DEVICES_ROUTER = API_DIR / "app" / "routers" / "devices.py"
 
 
 def read(path: Path) -> str:
     assert path.is_file(), (
-        f"{path} is missing. The device identity contract spans three repositories; "
-        f"they must all be checked out under {WORK_ROOT}."
+        f"{path} is missing. The device identity contract spans three components of "
+        f"the monorepo; they must all be present under {REPO_ROOT}."
     )
     return path.read_text(encoding="utf-8")
 
@@ -243,7 +241,7 @@ class TestContractKeySets:
         and fails on the first disagreement.
         """
         bash = shutil.which("bash")
-        assert bash, "bash is required to exercise the FleetBits-agent parser"
+        assert bash, "bash is required to exercise the agent parser"
         assert IDENTITY_LIB.is_file(), f"{IDENTITY_LIB} is missing"
 
         probes_file = tmp_path / "probes.bin"
@@ -279,7 +277,7 @@ class TestContractKeySets:
         same file.
         """
         bash = shutil.which("bash")
-        assert bash, "bash is required to exercise the FleetBits-agent parser"
+        assert bash, "bash is required to exercise the agent parser"
 
         raw = b"".join(
             f"{key}=".encode() + (b"a\x00b" if key == "DEVICE_ROLE" else b"x") + b"\n"
@@ -359,7 +357,7 @@ class TestTelemetryUrlsMatchCaddyfile:
 
     def test_no_prometheus_or_loki_hostnames_are_handed_to_devices(self):
         """The old contract shipped prometheus./loki. hosts that Caddy never served."""
-        service = read(API_REPO / "app" / "services" / "device_identity.py")
+        service = read(API_DIR / "app" / "services" / "device_identity.py")
         assert "prometheus." not in service
         assert "loki." not in service
 
@@ -419,14 +417,15 @@ class TestNoLegacyPathOrFormat:
     @pytest.mark.parametrize("name", sorted(FORBIDDEN))
     def test_pattern_absent_from_every_repository(self, name):
         forbidden = self.FORBIDDEN[name]
-        repos = (API_REPO, AGENT_REPO, PLATFORM_REPO, WORK_ROOT / "FleetBits-ui")
-        # Criterion 21 says "the four repositories". A missing checkout must fail
-        # the test, never silently reduce the search: a green run that swept one
-        # repository out of four proves nothing.
+        repos = (API_DIR, AGENT_DIR, PLATFORM_DIR, REPO_ROOT / "ui")
+        # Criterion 21 says "the four repositories" — now the four top-level
+        # folders of the monorepo. A missing folder must fail the test, never
+        # silently reduce the search: a green run that swept one out of four
+        # proves nothing.
         missing = [str(r) for r in repos if not r.is_dir()]
         assert not missing, (
-            f"criterion 21 searches all four repositories; not checked out: {missing}. "
-            f"Expected them side by side under {WORK_ROOT}."
+            f"criterion 21 searches all four components; missing: {missing}. "
+            f"Expected them under {REPO_ROOT}."
         )
         scanned = 0
         hits = []
@@ -460,7 +459,7 @@ class TestNoLegacyPathOrFormat:
 
     def test_identity_file_is_never_sourced_by_the_agent(self):
         """Criterion 2: no `source` / `.` applied to the identity file."""
-        targets = list((AGENT_REPO / "usr" / "lib" / "fleet-agent").glob("*.sh"))
+        targets = list((AGENT_DIR / "usr" / "lib" / "fleet-agent").glob("*.sh"))
         targets.append(CONTAINER_ENTRYPOINT)
         assert targets
         pattern = re.compile(r"^\s*(?:source|\.)\s+\S*(?:IDENTITY|identity-file|identity\.conf)\S*")
@@ -576,9 +575,9 @@ class TestProvisioningProducesTheContract:
             parse_identity(response.text)
 
 
-# ── Criterion 13 — the API bytes are fed to the real FleetBits-agent parser ───
+# ── Criterion 13 — the API bytes are fed to the real agent parser ────────────
 #
-# Cross-repo, therefore NOT @pytest.mark.security: see the module docstring.
+# Cross-component, therefore NOT @pytest.mark.security: see the module docstring.
 
 
 @pytest.mark.crossrepo
@@ -588,10 +587,8 @@ class TestProvisioningIsAcceptedByTheAgentParser:
     ):
         """Criterion 13 — the bytes the API returns are fed to the real bash parser."""
         bash = shutil.which("bash")
-        assert bash, "bash is required to exercise the FleetBits-agent parser"
-        assert IDENTITY_LIB.is_file(), (
-            f"{IDENTITY_LIB} is missing — check FleetBits-agent out next to this repository."
-        )
+        assert bash, "bash is required to exercise the agent parser"
+        assert IDENTITY_LIB.is_file(), f"{IDENTITY_LIB} is missing from the checkout."
         response = await _provision(client, provision_token)
 
         identity_file = tmp_path / "device-identity.conf"

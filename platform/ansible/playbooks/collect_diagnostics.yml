@@ -45,7 +45,7 @@
 
     # Drops every key the device identity contract declares secret.
     # Keep fleet_identity_secret_keys (group_vars/all/vars.yml) in step with
-    # FLEET_IDENTITY_SECRET_KEYS in FleetBits-agent/usr/lib/fleet-agent/identity-lib.sh.
+    # FLEET_IDENTITY_SECRET_KEYS in agent/usr/lib/fleet-agent/identity-lib.sh.
     - name: Collect device identity (redact all contract secrets)
       ansible.builtin.shell: >
         grep -v -E '^({{ fleet_identity_secret_keys | join("|") }})='

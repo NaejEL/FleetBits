@@ -74,7 +74,7 @@ log "Provisioning device: ${DEVICE_ID}"
 
 # ── Register with Fleet API → receive device-identity.conf ───────────────────
 # The path carries the device id: it must match the route declared by
-# FleetBits-api/app/routers/devices.py — POST /devices/{device_id}/provision.
+# api/app/routers/devices.py — POST /devices/{device_id}/provision.
 mkdir -p "${IDENTITY_DIR}"
 chmod 700 "${IDENTITY_DIR}" 2>/dev/null || true
 

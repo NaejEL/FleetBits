@@ -4,7 +4,7 @@
 # APTLY_URL is set; otherwise it bootstraps directly from the source tree
 # (handy before the first GitHub Actions release tag).
 #
-# Build context: FleetBits-agent/
+# Build context: agent/
 # Build arg:     APTLY_URL  (optional)  e.g. http://aptly-api:8080
 # Build arg:     AGENT_VERSION (optional) e.g. 1.0.0
 

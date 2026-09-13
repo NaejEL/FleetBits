@@ -2,14 +2,14 @@
 
 > **New here?** Start with the [root README](../README.md) for an overview of FleetBits, then come back here.
 
-This repository contains everything that runs on your **VPS control plane**: all 13 Docker services, Caddy configuration, Prometheus/Loki/Grafana setup, Ansible playbooks for edge devices, and the installer scripts.
+This folder of the FleetBits monorepo contains everything that runs on your **VPS control plane**: all 13 Docker services, Caddy configuration, Prometheus/Loki/Grafana setup, Ansible playbooks for edge devices, and the installer scripts.
 
-| Repo | Purpose |
+| Folder | Purpose |
 |---|---|
-| **FleetBits-platform** ← you are here | Docker Compose control plane + Ansible automation |
-| `FleetBits-api` | Fleet REST API (FastAPI + PostgreSQL) |
-| `FleetBits-ui` | Operator web interface (Flask) |
-| `FleetBits-agent` | Edge device agent (.deb package) |
+| **`platform/`** ← you are here | Docker Compose control plane + Ansible automation |
+| `api/` | Fleet REST API (FastAPI + PostgreSQL) |
+| `ui/` | Operator web interface (Flask) |
+| `agent/` | Edge device agent (.deb package) |
 
 ---
 
@@ -42,7 +42,7 @@ When you install FleetBits, these 13 services start automatically. You do not ne
 Run this on your Proxmox host shell. It creates an LXC container, installs Docker, and starts the full stack:
 
 ```bash
-GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/ct/fleetbits.sh)"
+GITHUB_OWNER=<github-owner> bash -c "$(curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits/main/platform/scripts/proxmox/ct/fleetbits.sh)"
 ```
 
 The script asks for:
@@ -56,7 +56,7 @@ After ~5 minutes, it prints `https://fleet.yourdomain.com` and an admin password
 ### Option B — Any Debian 12 server
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits-platform/main/scripts/proxmox/install/fleetbits-install.sh \
+curl -fsSL https://raw.githubusercontent.com/<github-owner>/FleetBits/main/platform/scripts/proxmox/install/fleetbits-install.sh \
   | GITHUB_OWNER=<github-owner> FLEET_DOMAIN=fleet.yourdomain.com bash
 ```
 
@@ -92,7 +92,7 @@ For a full lifecycle walkthrough (dry-run, health checks, rollback path), see [`
 ## Repository layout
 
 ```
-FleetBits-platform/
+platform/
 ├── secrets.env.example           Template — copy to secrets.env and fill in
 ├── dev-setup.ps1 / dev-setup.sh  One-command local development setup
 ├── scripts/
@@ -133,27 +133,27 @@ FleetBits-platform/
 ### Prerequisites
 
 - Docker Engine + Compose v2
-- All four repos cloned into the same parent directory:
+- The FleetBits monorepo cloned:
 
 ```
 FleetBits/
-├── FleetBits-platform/   ← run dev-setup from here
-├── FleetBits-api/
-├── FleetBits-ui/
-└── FleetBits-agent/
+├── platform/   ← run dev-setup from here
+├── api/
+├── ui/
+└── agent/
 ```
 
 ### One command (recommended)
 
 **Windows (PowerShell):**
 ```powershell
-cd FleetBits-platform
+cd platform
 .\dev-setup.ps1
 ```
 
 **Linux / macOS:**
 ```bash
-cd FleetBits-platform
+cd platform
 ./dev-setup.sh
 ```
 
@@ -243,8 +243,8 @@ ansible-vault encrypt group_vars/all/vault.yml --vault-password-file ~/.fleet-va
 |------|----------|-----------|
 | `secrets.env` | All Docker Compose service credentials | **No** — in `.gitignore` |
 | `docker/docker-compose.override.yml` | Local build contexts + port overrides | **No** |
-| `FleetBits-api/.env` | API env for local dev | **No** |
-| `FleetBits-ui/.env` | UI env for local dev | **No** |
+| `api/.env` | API env for local dev | **No** |
+| `ui/.env` | UI env for local dev | **No** |
 | `ansible/group_vars/all/vault.yml` | Ansible secrets (encrypted ciphertext) | **Yes** — encrypted |
 
 The vault password lives only in your team's password manager (Vaultwarden). Never commit it.

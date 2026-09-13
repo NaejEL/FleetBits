@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # apply-branch-protection.sh
 #
-# Applies branch protection rules and required status checks to main branch
-# across all 4 FleetBits repos. Closes SEC-P0-03, SEC-P0-04, SEC-P0-05.
+# Applies branch protection rules and required status checks to the main branch
+# of the FleetBits monorepo. Closes SEC-P0-03, SEC-P0-04, SEC-P0-05.
 #
 # Prerequisites:
 #   - GitHub CLI installed: https://cli.github.com/
@@ -68,47 +68,24 @@ EOF
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FleetBits-api — full security baseline + regression stack
+# FleetBits — the monorepo. The required checks are the jobs of
+# .github/workflows/security-baseline.yml plus the PR checklist. All of them run
+# on every pull request, unconditionally: a required check that carries a
+# `paths:` filter never reports on a PR outside its scope and blocks the merge
+# for ever, which is why the path-filtered suites (api-tests, agent-tests,
+# platform-tests, security-regression-stack) are deliberately NOT required here.
 # ─────────────────────────────────────────────────────────────────────────────
-apply_protection "FleetBits-api" \
+apply_protection "FleetBits" \
   "dependency-review" \
   "secret-scan" \
-  "python-sast-and-deps" \
-  "filesystem-vuln-scan" \
-  "security-regression-stack" \
-  "pr-security-checklist"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FleetBits-ui — security baseline (no Python regression stack)
-# ─────────────────────────────────────────────────────────────────────────────
-apply_protection "FleetBits-ui" \
-  "dependency-review" \
-  "secret-scan" \
-  "python-sast-and-deps" \
-  "filesystem-vuln-scan" \
-  "pr-security-checklist"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FleetBits-platform — security baseline (infra / YAML repo)
-# ─────────────────────────────────────────────────────────────────────────────
-apply_protection "FleetBits-platform" \
-  "dependency-review" \
-  "secret-scan" \
-  "filesystem-vuln-scan" \
-  "pr-security-checklist"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FleetBits-agent — security baseline (shell/Alloy repo)
-# ─────────────────────────────────────────────────────────────────────────────
-apply_protection "FleetBits-agent" \
-  "dependency-review" \
-  "secret-scan" \
+  "api-sast-and-deps" \
+  "ui-sast-and-deps" \
   "filesystem-vuln-scan" \
   "pr-security-checklist"
 
 echo ""
 echo "════════════════════════════════════════════════════════"
-echo " Branch protection applied to all 4 FleetBits repos."
-echo " Run once per repo to verify:"
-echo "   gh api /repos/${OWNER}/FleetBits-api/branches/main/protection | jq '.required_status_checks'"
+echo " Branch protection applied to the FleetBits monorepo."
+echo " Verify with:"
+echo "   gh api /repos/${OWNER}/FleetBits/branches/main/protection | jq '.required_status_checks'"
 echo "════════════════════════════════════════════════════════"

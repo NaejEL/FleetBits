@@ -60,7 +60,7 @@
     success_msg: MQTT exporter credentials are consistent with ENABLE_MQTT_EXPORTER.
 
 # Mode 0600 — identical to firstboot.sh and scripts/postinst.sh in
-# FleetBits-agent. The file carries FLEET_AGENT_TOKEN, REPO_BASIC_TOKEN,
+# agent/. The file carries FLEET_AGENT_TOKEN, REPO_BASIC_TOKEN,
 # HEADSCALE_PREAUTH_KEY and MQTT_PASSWORD: root-only, no group read.
 - name: Deploy device-identity.conf
   ansible.builtin.template:

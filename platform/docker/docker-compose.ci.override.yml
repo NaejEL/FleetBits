@@ -69,7 +69,7 @@ services:
   fleet-api:
     # Build from CI checkout sibling directory (../)
     build:
-      context: ../../FleetBits-api
+      context: ../../api
       dockerfile: Dockerfile
     image: fleetbits-api:ci
     # No port exposure in CI; accessed only via Caddy and docker compose exec
@@ -87,7 +87,7 @@ services:
   fleet-ui:
     # Build from CI checkout sibling directory
     build:
-      context: ../../FleetBits-ui
+      context: ../../ui
       dockerfile: Dockerfile
     image: fleetbits-ui:ci
     # No port exposure in CI

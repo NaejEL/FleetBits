@@ -179,7 +179,7 @@ Done!  VPS device enrolled successfully.
   Token     : written to secrets.env as VPS_DEVICE_TOKEN
 
 Next steps:
-  cd FleetBits-platform\docker
+  cd FleetBits\platform\docker
   docker compose --env-file ..\secrets.env up -d --build vps-device
   docker compose --env-file ..\secrets.env logs vps-device -f --tail 30
 "@

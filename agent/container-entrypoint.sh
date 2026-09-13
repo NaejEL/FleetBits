@@ -7,7 +7,7 @@
 # This is the third producer of the device identity file. It writes exactly the
 # same contract as the Fleet API provisioning route and the Ansible template —
 # see identity-lib.sh, whose key list is the agent-side copy of
-# FleetBits-api/app/contracts/device_identity.py.
+# api/app/contracts/device_identity.py.
 #
 # Required env vars:
 #   DEVICE_ID, SITE_ID, ZONE_ID, DEVICE_ROLE

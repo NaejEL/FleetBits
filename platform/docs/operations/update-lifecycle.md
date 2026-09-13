@@ -6,7 +6,7 @@ This runbook documents and validates the standard platform update lifecycle for 
 
 By default, the command executes four phases in order:
 
-1. **Pull platform config** (`git pull --ff-only`) in `/opt/fleetbits/FleetBits-platform`
+1. **Pull platform config** (`git pull --ff-only`) in `/opt/fleetbits/FleetBits`
 2. **Pull runtime images** for `fleet-api` and `fleet-ui`
 3. **Restart only changed pulled services** (`fleet-api` / `fleet-ui` if their digest changed)
 4. **Rebuild only impacted local-build services** when config changed (e.g. `prometheus`, `loki`, `alertmanager`, `caddy`, `grafana`, etc.)
@@ -43,7 +43,7 @@ By default, the command executes four phases in order:
 
 If API/UI behavior regresses after update:
 
-1. In `/opt/fleetbits/FleetBits-platform`, identify previous commit:
+1. In `/opt/fleetbits/FleetBits`, identify previous commit:
    - `git log --oneline -n 5`
 2. Roll config back:
    - `git reset --hard <previous_commit>`

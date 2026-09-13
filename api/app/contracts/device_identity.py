@@ -1,8 +1,8 @@
 """Canonical contract for ``/etc/fleet/device-identity.conf``.
 
 SOURCE OF TRUTH for the device identity file. Every producer and every consumer
-of that file — the provisioning route below, ``FleetBits-agent`` (parser,
-container entry point, example file, README) and ``FleetBits-platform``
+of that file — the provisioning route below, ``agent/`` (parser, container
+entry point, example file, README) and ``platform/``
 (Ansible template, diagnostics redaction) — MUST agree with this module.
 ``tests/test_device_identity_contract.py`` compares the four key sets and fails
 on any divergence.
@@ -35,7 +35,7 @@ CONTRACT_VERSION = 1
 VALUE_CHARACTER_CLASS = r"[A-Za-z0-9._:/@=+,~-]"
 
 #: Canonical POSIX ERE for a contract value. This exact string is duplicated as
-#: ``FLEET_IDENTITY_VALUE_PATTERN`` in ``FleetBits-agent`` and compared by
+#: ``FLEET_IDENTITY_VALUE_PATTERN`` in ``agent/`` and compared by
 #: ``tests/test_device_identity_contract.py``.
 VALUE_PATTERN = rf"^{VALUE_CHARACTER_CLASS}*$"
 

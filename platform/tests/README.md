@@ -1,6 +1,6 @@
-# FleetBits-platform tests
+# platform/ tests
 
-Single entry point, from the repository root:
+Single entry point, from `platform/`:
 
 ```bash
 ./scripts/run-tests.sh
@@ -44,13 +44,12 @@ inventory: syntax and lint only, with a throw-away vault password file so the
 parser stops at `ansible.cfg`'s `vault_password_file` setting without ever
 decrypting anything.
 
-The Python suite uses a virtualenv kept **outside** the repository
-(`../.venv-platform`), because this repository's `.gitignore` does not ignore
-`.venv/`.
+The Python suite uses a virtualenv kept **outside** `platform/`
+(`../.venv-platform`), because `platform/.gitignore` does not ignore `.venv/`.
 
-The contract tests read `FleetBits-agent/usr/lib/fleet-agent/identity-lib.sh`
-and `FleetBits-agent/container-entrypoint.sh` from the sibling checkout: the
-device identity contract spans three repositories and a desynchronised one must
+The contract tests read `agent/usr/lib/fleet-agent/identity-lib.sh` and
+`agent/container-entrypoint.sh` from the sibling folder of the monorepo: the
+device identity contract spans three components and a desynchronised one must
 fail a test rather than a device.
 
 ## Pre-existing lint debt (steps 5 and 6)

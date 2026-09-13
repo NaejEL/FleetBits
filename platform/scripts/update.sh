@@ -47,14 +47,14 @@ Usage:
   fleetbits-update [--config-only] [--images-only] [--dry-run]
 
 Options:
-  --config-only  Pull latest FleetBits-platform config only
+  --config-only  Pull latest FleetBits config only
   --images-only  Pull/restart images only (skip git pull)
   --dry-run      Print actions without applying changes
 EOF
 }
 
 INSTALL_DIR="/opt/fleetbits"
-COMPOSE_DIR="${INSTALL_DIR}/FleetBits-platform/docker"
+COMPOSE_DIR="${INSTALL_DIR}/FleetBits/platform/docker"
 SECRETS_FILE="${INSTALL_DIR}/secrets.env"
 
 CONFIG_ONLY=false
@@ -108,8 +108,8 @@ echo ""
 
 # ── Step 1: Pull latest platform config ───────────────────────────────────────
 if [ "${IMAGES_ONLY}" != "true" ]; then
-    info "Pulling latest FleetBits-platform config from GitHub..."
-    cd "${INSTALL_DIR}/FleetBits-platform"
+    info "Pulling latest FleetBits config from GitHub..."
+    cd "${INSTALL_DIR}/FleetBits"
     BEFORE=$(git rev-parse HEAD)
     run_cmd git pull --ff-only
     AFTER=$(git rev-parse HEAD)

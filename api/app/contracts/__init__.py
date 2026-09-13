@@ -1,1 +1,1 @@
-"""Cross-repository contracts owned by FleetBits-api."""
+"""Cross-component contracts owned by api/."""
