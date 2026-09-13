@@ -45,7 +45,12 @@ cd "${REPO_ROOT}"
 
 ANSIBLE_IMAGE="${ANSIBLE_IMAGE:-willhallonline/ansible:latest}"
 ANSIBLE_LINT_IMAGE="${ANSIBLE_LINT_IMAGE:-pipelinecomponents/ansible-lint:latest}"
-SHELLCHECK_IMAGE="${SHELLCHECK_IMAGE:-koalaman/shellcheck:stable}"
+# Pinned, not "stable": the ratchet below compares a COUNT, so it is only
+# meaningful if every environment counts with the same analyser. A floating
+# tag — or the distribution package, which is older still — turns a version
+# bump into a phantom regression. This is exactly how CI first reported 14
+# findings where a developer machine reported 11.
+SHELLCHECK_IMAGE="${SHELLCHECK_IMAGE:-koalaman/shellcheck:v0.11.0}"
 # The .gitignore of this repository does not ignore .venv/, so the virtualenv
 # lives beside the repository rather than inside it.
 VENV="${FLEET_PLATFORM_VENV:-${REPO_ROOT}/../.venv-platform}"
@@ -213,16 +218,13 @@ echo "${#SHELL_FILES[@]} shell script(s) analysed"
 
 # --format=gcc prints exactly one line per finding, which is what makes the
 # count below a count and not a guess.
+# Always the pinned image, never a shellcheck found on PATH: see the note on
+# SHELLCHECK_IMAGE above. Set SHELLCHECK_IMAGE to override deliberately.
 SHELLCHECK_STATUS=0
-if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck --format=gcc "${SHELL_FILES[@]}" > "${SHELLCHECK_REPORT}" 2>&1 \
-    || SHELLCHECK_STATUS=$?
-else
-  echo "shellcheck not on PATH — using ${SHELLCHECK_IMAGE}"
-  docker run --rm -v "${REPO_ROOT}":/mnt -w /mnt "${SHELLCHECK_IMAGE}" \
-    --format=gcc "${SHELL_FILES[@]}" > "${SHELLCHECK_REPORT}" 2>&1 \
-    || SHELLCHECK_STATUS=$?
-fi
+echo "analyser: ${SHELLCHECK_IMAGE}"
+docker run --rm -v "${REPO_ROOT}":/mnt -w /mnt "${SHELLCHECK_IMAGE}" \
+  --format=gcc "${SHELL_FILES[@]}" > "${SHELLCHECK_REPORT}" 2>&1 \
+  || SHELLCHECK_STATUS=$?
 cat "${SHELLCHECK_REPORT}"
 
 # Exit status: 0 when clean, 1 when it found something; 2 and above mean a usage

@@ -58,14 +58,16 @@ jobs:
 
       # Every tool installed here is invoked by scripts/run-tests.sh below:
       # ansible-playbook and ansible-lint for the syntax check and the two lint
-      # passes, shellcheck for the shell ratchet over scripts/, docker/ and
-      # dev-setup.sh. run-tests.sh prefers each of them from $PATH and falls
-      # back to its container image, so installing them here is what keeps this
-      # job from pulling three images on every run.
+      # passes. run-tests.sh prefers them from $PATH and falls back to its
+      # container image, so installing them here keeps this job from pulling
+      # images on every run.
+      #
+      # shellcheck is deliberately NOT installed: the shell step is a ratchet on
+      # a finding COUNT, so it always runs the version pinned in run-tests.sh.
+      # The distribution package is older and reports a different number, which
+      # would fail the ratchet for a reason that is not a regression.
       - name: Install tooling
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck
           python -m pip install --upgrade pip
           pip install ansible-core ansible-lint
 
