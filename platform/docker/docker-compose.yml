@@ -148,6 +148,10 @@ services:
       GRAFANA_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
       GRAFANA_PROXY_SECRET: "${GRAFANA_PROXY_SECRET:?Set GRAFANA_PROXY_SECRET in secrets.env}"
       FLEET_API_URL: "https://api.${FLEET_DOMAIN}"
+      # Required by fleet-api at start-up: the device identity file handed out
+      # at provisioning is built from it (metrics.<domain>, logs.<domain>,
+      # matching the Caddy site blocks in docker/caddy/Caddyfile).
+      FLEET_DOMAIN: "${FLEET_DOMAIN:?Set FLEET_DOMAIN in secrets.env}"
       OPERATOR_USERNAME: "${OPERATOR_USERNAME:-admin}"
       OPERATOR_PASSWORD: "${OPERATOR_PASSWORD}"
     depends_on:

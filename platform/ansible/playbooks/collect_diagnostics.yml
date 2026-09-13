@@ -16,7 +16,7 @@
 
   vars:
     diag_dir_remote: /tmp/fleet-diag-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}
-    diag_dir_local:  "{{ playbook_dir }}/../diagnostics/{{ inventory_hostname }}"
+    diag_dir_local: "{{ playbook_dir }}/../diagnostics/{{ inventory_hostname }}"
 
   tasks:
     - name: Create temp diagnostics directory on device
@@ -43,9 +43,13 @@
         --no-pager > {{ diag_dir_remote }}/service-status.txt 2>&1
       changed_when: false
 
-    - name: Collect device identity (redact token)
+    # Drops every key the device identity contract declares secret.
+    # Keep fleet_identity_secret_keys (group_vars/all/vars.yml) in step with
+    # FLEET_IDENTITY_SECRET_KEYS in FleetBits-agent/usr/lib/fleet-agent/identity-lib.sh.
+    - name: Collect device identity (redact all contract secrets)
       ansible.builtin.shell: >
-        grep -v FLEET_AGENT_TOKEN {{ fleet_identity_path }}
+        grep -v -E '^({{ fleet_identity_secret_keys | join("|") }})='
+        {{ fleet_identity_path }}
         > {{ diag_dir_remote }}/device-identity-redacted.conf
       changed_when: false
 
@@ -63,7 +67,7 @@
 
     - name: Fetch diagnostics to controller
       ansible.builtin.fetch:
-        src:  "{{ diag_dir_remote }}/"
+        src: "{{ diag_dir_remote }}/"
         dest: "{{ diag_dir_local }}/"
         flat: false
 

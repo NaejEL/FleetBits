@@ -1,5 +1,5 @@
 # docker-compose.ci.override.yml — CI/RUNNER ENVIRONMENT
-# 
+#
 # Optimizations for automated security regression testing:
 #   - fleet-api and fleet-ui built from CI checkout sibling paths
 #   - All services on internal network only (no port exposure)

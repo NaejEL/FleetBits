@@ -30,29 +30,29 @@ sync_device_acl() {
     echo "[mosquitto-acl] WARNING: curl not available, skipping API sync" >&2
     return 1
   fi
-  
+
   # Try to fetch ACL from API with operator credentials (if available)
   if [ -z "${FLEET_OPERATOR_TOKEN:-}" ]; then
     echo "[mosquitto-acl] INFO: FLEET_OPERATOR_TOKEN not set, skipping device ACL sync" >&2
     return 1
   fi
-  
+
   TEMP_ACL="$(mktemp)"
   trap "rm -f '$TEMP_ACL'" EXIT
-  
+
     if ! curl -sf -H "Authorization: Bearer $FLEET_OPERATOR_TOKEN" \
       "$API_URL/api/v1/devices/mqtt/acl" -o "$TEMP_ACL" 2>/dev/null; then
     echo "[mosquitto-acl] WARNING: Failed to fetch ACL from API" >&2
     return 1
   fi
-  
+
   # Parse JSON response and rebuild ACL file
   # Expected format: {"device_<id>": ["topic1", "topic2"], "fleet_exporter": ["$SYS/#"]}
   {
     echo "user ${MQTT_BROKER_USERNAME}"
     echo "topic read \$SYS/#"
     echo ""
-    
+
     # Simple JSON parsing: extract device entries and generate ACL rules
     python3 -c "
 import json, sys
@@ -70,7 +70,7 @@ except Exception as e:
   sys.exit(1)
 " 2>/dev/null && mv "$TEMP_ACL" "$ACL_FILE" && echo "[mosquitto-acl] Synced device ACL from API" && return 0 || true
   }
-  
+
   return 1
 }
 

@@ -4,17 +4,42 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+      # docker-compose.ci.override.yml uses Compose's own `!reset` YAML tag,
+      # which the safe loader cannot resolve. It is a valid Compose construct,
+      # not a defect: scripts/run-tests.sh validates it for real, with
+      # `docker compose -f docker-compose.yml -f docker-compose.ci.override.yml
+      # config -q` — the base file plus the override, exactly how the security
+      # workflow applies it. Everywhere else the strict loader still runs.
       - id: check-yaml
+        exclude: ^docker/docker-compose\.ci\.override\.yml$
+      - id: check-yaml
+        alias: check-yaml-compose-overrides
+        name: check-yaml (Compose overrides, custom tags allowed)
+        args: ["--unsafe"]
+        files: ^docker/docker-compose\.ci\.override\.yml$
       - id: check-json
       - id: check-merge-conflict
       - id: detect-private-key
       - id: check-added-large-files
 
   # Secret scanning — catches tokens, API keys, credentials before they reach git history
+  #
+  # `entry` overrides the upstream one, which is
+  # `gitleaks protect --verbose --redact --staged`: that scans the git INDEX, so
+  # it reports "0 commits scanned / Passed" on a working tree where nothing has
+  # been staged, no matter what the files contain. `pre-commit run gitleaks
+  # --files <path>` did not help either — the upstream hook sets
+  # pass_filenames: false, so the file list was accepted and then ignored.
+  # `detect --no-git --source .` reads the CONTENT of every file under the
+  # repository root, tracked or not, staged or not, which is what a pre-commit
+  # secret scan is supposed to guarantee for a change that carries device
+  # credentials.
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.4
     hooks:
       - id: gitleaks
+        entry: gitleaks detect --no-git --redact --verbose --source .
+        pass_filenames: false
 
   # GitHub Actions workflow linter — catches invalid step structure, bad expressions
   - repo: https://github.com/rhysd/actionlint
