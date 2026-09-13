@@ -31,6 +31,12 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Every tool installed here is invoked by scripts/run-tests.sh below:
+      # ansible-playbook and ansible-lint for the syntax check and the two lint
+      # passes, shellcheck for the shell ratchet over scripts/, docker/ and
+      # dev-setup.sh. run-tests.sh prefers each of them from $PATH and falls
+      # back to its container image, so installing them here is what keeps this
+      # job from pulling three images on every run.
       - name: Install tooling
         run: |
           sudo apt-get update

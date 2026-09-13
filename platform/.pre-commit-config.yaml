@@ -6,8 +6,10 @@ repos:
       - id: end-of-file-fixer
       # docker-compose.ci.override.yml uses Compose's own `!reset` YAML tag,
       # which the safe loader cannot resolve. It is a valid Compose construct,
-      # not a defect: the file is validated for real by `docker compose config`
-      # in scripts/run-tests.sh. Everywhere else the strict loader still runs.
+      # not a defect: scripts/run-tests.sh validates it for real, with
+      # `docker compose -f docker-compose.yml -f docker-compose.ci.override.yml
+      # config -q` — the base file plus the override, exactly how the security
+      # workflow applies it. Everywhere else the strict loader still runs.
       - id: check-yaml
         exclude: ^docker/docker-compose\.ci\.override\.yml$
       - id: check-yaml

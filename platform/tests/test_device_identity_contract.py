@@ -1,12 +1,23 @@
 """Device identity contract — FleetBits-platform side (SPEC-contrat-identite-appareil).
 
-Covers acceptance criteria 5 (automation producer), 7, 15, 16, 17 and 20.
+Covers acceptance criteria 5 (automation producer), 7, 9, 15, 16, 17 and 20.
 
-The contract is owned by ``FleetBits-api/app/contracts/device_identity.py``; the
-strict parser that consumes it lives in
-``FleetBits-agent/usr/lib/fleet-agent/identity-lib.sh``. These tests render the
-Ansible template and the container entry point and feed the result to that very
-parser, so a divergence in any of the three repositories fails here.
+What these tests actually read, stated exactly, because the name "contract
+tests" invites a larger claim than the files support:
+
+* the **platform** side — the Ansible template, the role tasks, group_vars, the
+  diagnostics playbook and docker-compose.yml — from this repository;
+* the **agent** side — ``identity-lib.sh`` (the strict parser and the key list),
+  ``generate-config.sh``, ``firstboot.sh`` and ``container-entrypoint.sh`` — from
+  the sibling ``FleetBits-agent`` checkout, which the CI workflow checks out
+  alongside this one.
+
+``FleetBits-api/app/contracts/device_identity.py`` is the contract's source of
+truth, and it is **not read here**: ``contract_keys()`` below reads the
+agent-side copy in ``identity-lib.sh``. Keeping that copy equal to the Python
+module is the job of ``FleetBits-api/tests/test_device_identity_contract.py``,
+in the repository that owns it. So a divergence between THIS repository and the
+agent fails here; a divergence between the agent and the API fails there.
 """
 
 from __future__ import annotations
@@ -18,7 +29,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+import yaml
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, meta
 
 PLATFORM_REPO = Path(__file__).resolve().parents[1]
 WORK_ROOT = PLATFORM_REPO.parent
@@ -33,6 +45,9 @@ GROUP_VARS = PLATFORM_REPO / "ansible" / "group_vars" / "all" / "vars.yml"
 DIAGNOSTICS = PLATFORM_REPO / "ansible" / "playbooks" / "collect_diagnostics.yml"
 COMPOSE = PLATFORM_REPO / "docker" / "docker-compose.yml"
 FIRSTBOOT = AGENT_REPO / "usr" / "lib" / "fleet-agent" / "firstboot.sh"
+GENERATE_CONFIG = AGENT_REPO / "usr" / "lib" / "fleet-agent" / "generate-config.sh"
+ANSIBLE_DIR = PLATFORM_REPO / "ansible"
+BOOTSTRAP_PLAYBOOK = ANSIBLE_DIR / "playbooks" / "bootstrap_device.yml"
 
 # A representative inventory for an edge device, as group_vars + host_vars
 # would supply it.
@@ -183,9 +198,242 @@ def test_template_provides_every_key_firstboot_treats_as_fatal():
 
 
 def test_neither_side_references_a_key_the_other_cannot_provide():
+    """Both directions, because the test name promises both.
+
+    Producer side: every key this repository writes must be one the agent parser
+    accepts — an extra key is not ignored, ``fleet_identity_parse`` rejects the
+    whole file on it.
+
+    Consumer side: every ``${FLEET_ID_*}`` the agent dereferences must be a key
+    this repository writes — a missing one expands to the empty string under the
+    parser's prefix and the failure shows up far from its cause.
+
+    Both sets are asserted non-empty first. A regex that stopped matching (the
+    ``FLEET_ID_`` prefix renamed, the key list reformatted) would otherwise make
+    an empty set satisfy every inclusion below and turn this into a test that
+    passes by measuring nothing.
+    """
     rendered = set(keys_of(render_template()))
+    accepted = set(contract_keys())
     referenced = set(re.findall(r"\$\{FLEET_ID_([A-Z_]+)[:}]", read(FIRSTBOOT)))
+
+    assert rendered, "the Ansible template rendered no KEY=value line"
+    assert accepted, "identity-lib.sh declares no contract key"
+    assert referenced, "firstboot.sh dereferences no FLEET_ID_* value"
+
+    assert rendered <= accepted, sorted(rendered - accepted)
     assert referenced <= rendered, sorted(referenced - rendered)
+
+
+# ── Criterion 7 — the automation path cannot emit a file the agent rejects ──
+#
+# Rendering a syntactically valid file is not enough. generate-config.sh is run
+# by the role's own "Regenerate collector config" handler, right after the
+# template task, so anything it refuses fails the play on the device. These
+# tests replay that script on the real Ansible render instead of stopping at the
+# parser, which accepts empty values for MQTT_USERNAME and MQTT_PASSWORD that
+# generate-config.sh then demands.
+
+
+def ansible_bool(value: object) -> bool:
+    """Ansible's ``| bool`` filter, restricted to the values under test here.
+
+    Plain Jinja2 has no ``bool`` filter — Ansible adds it — and the role's guard
+    is written with it because a host_vars override may spell the flag as a
+    string. Reimplemented narrowly so evaluating the guard's real expression
+    needs no Ansible installation; any value outside this set raises rather than
+    guessing.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        if value.lower() in {"true", "yes", "on", "1"}:
+            return True
+        if value.lower() in {"false", "no", "off", "0", ""}:
+            return False
+    raise AssertionError(f"ansible_bool: unhandled value {value!r}")
+
+
+def load_yaml(path: Path) -> object:
+    return yaml.safe_load(read(path))
+
+
+def role_task(name: str) -> dict:
+    """Return the fleet_agent task whose ``name`` starts with the given text."""
+    tasks = load_yaml(ROLE_TASKS)
+    for task in tasks:
+        if str(task.get("name", "")).startswith(name):
+            return task
+    raise AssertionError(f"no task named {name!r} in {ROLE_TASKS}")
+
+
+def collect_defined_names(node: object, into: set[str]) -> None:
+    """Harvest every variable name an inventory or group_vars file defines."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in {"children", "hosts"} and isinstance(value, dict):
+                for child in value.values():
+                    # A host entry is itself a mapping of variables.
+                    if isinstance(child, dict):
+                        if set(child) & {"children", "hosts", "vars"}:
+                            collect_defined_names(child, into)
+                        else:
+                            into.update(child)
+            elif key == "vars" and isinstance(value, dict):
+                into.update(value)
+            elif key == "all" and isinstance(value, dict):
+                collect_defined_names(value, into)
+            else:
+                into.add(key)
+
+
+def defined_ansible_variables() -> set[str]:
+    names: set[str] = set()
+    for path in sorted((ANSIBLE_DIR / "group_vars").rglob("*.yml")):
+        data = load_yaml(path)
+        if isinstance(data, dict):
+            names.update(data)
+    for path in sorted((ANSIBLE_DIR / "inventories").rglob("*.yml")):
+        collect_defined_names(load_yaml(path), names)
+    # Facts the bootstrap play sets before the fleet_agent role runs.
+    for task in yaml.safe_load(read(BOOTSTRAP_PLAYBOOK))[0].get("pre_tasks", []):
+        fact = task.get("ansible.builtin.set_fact") or task.get("set_fact") or {}
+        names.update(k for k in fact if k != "cacheable")
+    # Ansible magic variables the template is entitled to use.
+    names.add("inventory_hostname")
+    return names
+
+
+def template_variables() -> set[str]:
+    env = Environment(autoescape=False)  # parsing only, nothing is rendered
+    return meta.find_undeclared_variables(env.parse(read(TEMPLATE_DIR / TEMPLATE_NAME)))
+
+
+def test_every_template_variable_is_defined_somewhere_in_the_inventory():
+    """No name in the template may exist only in the template.
+
+    ``{{ foo | default('') }}`` on a variable that nothing defines is not a
+    default, it is a permanent empty value that no run can ever fill — and the
+    filter is what hides it. Both HEADSCALE_PREAUTH_KEY and the MQTT credentials
+    shipped that way.
+    """
+    referenced = template_variables()
+    assert referenced, "the template reads no variable — the parse went wrong"
+    defined = defined_ansible_variables()
+    assert defined, "no variable definitions found under ansible/"
+    assert referenced <= defined, sorted(referenced - defined)
+
+
+def test_group_vars_define_the_identity_credentials_the_template_writes():
+    """The three names the review found undefined, pinned by name."""
+    declared = load_yaml(GROUP_VARS)
+    for name in ("headscale_preauth_key", "repo_basic_token", "mqtt_username", "mqtt_password"):
+        assert name in declared, f"{name} is read by the template but declared nowhere"
+
+
+@pytest.mark.parametrize(
+    ("variables", "expected"),
+    [
+        # Exporter off: credentials are irrelevant, the guard must not fire.
+        ({"enable_mqtt_exporter": False, "mqtt_username": "", "mqtt_password": ""}, True),
+        # Exporter on with both credentials: the supported configuration.
+        ({"enable_mqtt_exporter": True, "mqtt_username": "u", "mqtt_password": "p"}, True),
+        # Exporter on, credentials missing: generate-config.sh would refuse.
+        ({"enable_mqtt_exporter": True, "mqtt_username": "", "mqtt_password": "p"}, False),
+        ({"enable_mqtt_exporter": True, "mqtt_username": "u", "mqtt_password": ""}, False),
+        ({"enable_mqtt_exporter": True, "mqtt_username": "", "mqtt_password": ""}, False),
+        # The flag may arrive as a string from host_vars.
+        ({"enable_mqtt_exporter": "true", "mqtt_username": "u", "mqtt_password": ""}, False),
+    ],
+)
+def test_role_guard_holds_exactly_when_the_exporter_can_be_configured(variables, expected):
+    """Evaluate the role's own assert expression, not a copy of it."""
+    task = role_task("Assert the MQTT exporter")
+    conditions = task["ansible.builtin.assert"]["that"]
+    assert conditions, "the assert declares no condition"
+
+    env = Environment(undefined=StrictUndefined, autoescape=False)
+    env.filters["bool"] = ansible_bool
+    for condition in conditions:
+        holds = env.from_string("{{ (" + condition + ") | string }}").render(**variables)
+        assert (holds == "True") is expected, f"{condition!r} on {variables!r} gave {holds}"
+
+
+def test_role_asserts_before_it_writes_the_identity_file():
+    """The guard is worthless after the file is on disk."""
+    names = [str(task.get("name", "")) for task in load_yaml(ROLE_TASKS)]
+    guard = next(i for i, n in enumerate(names) if n.startswith("Assert the MQTT exporter"))
+    deploy = next(i for i, n in enumerate(names) if n.startswith("Deploy device-identity.conf"))
+    assert guard < deploy, names
+
+
+def run_generate_config(identity_file: Path, tmp_path: Path) -> subprocess.CompletedProcess:
+    """Run the agent's real generate-config.sh on a rendered identity file.
+
+    A stub stands in for /usr/bin/alloy: the script only tests it for the
+    executable bit to pick a telemetry runtime, and never executes it.
+    """
+    alloy_stub = tmp_path / "alloy-stub"
+    alloy_stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    alloy_stub.chmod(0o755)
+
+    env = dict(os.environ)
+    env.update(
+        {
+            "FLEET_IDENTITY_FILE": str(identity_file),
+            "FLEET_ALLOY_BIN": str(alloy_stub),
+            "FLEET_ALLOY_CONFIG": str(tmp_path / "alloy" / "config.alloy"),
+            "FLEET_VECTOR_BIN": str(tmp_path / "no-vector"),
+        }
+    )
+    return subprocess.run(
+        [str(GENERATE_CONFIG)], capture_output=True, text=True, check=False, env=env
+    )
+
+
+def test_generate_config_accepts_the_render_with_the_mqtt_exporter_enabled(tmp_path):
+    """The case the play actually hits on a Mosquitto host.
+
+    ``enable_mqtt_exporter: true`` is a documented, supported host_vars setting
+    (group_vars/all/vars.yml, host_vars/README.md). On such a host the template
+    task notifies the handler that runs this script, so anything it refuses
+    fails the play on the first run.
+    """
+    identity_file = tmp_path / "device-identity.conf"
+    identity_file.write_text(render_template(enable_mqtt_exporter=True), encoding="utf-8")
+
+    proc = run_generate_config(identity_file, tmp_path)
+    assert proc.returncode == 0, proc.stderr
+
+    rendered = (tmp_path / "alloy" / "config.alloy").read_text(encoding="utf-8")
+    assert INVENTORY_VARS["mqtt_username"] in rendered
+    assert 'target_label = "environment"' in rendered
+    assert 'target_label = "ring"' in rendered
+
+
+def test_generate_config_refuses_the_exporter_without_credentials(tmp_path):
+    """Why the role guard exists, demonstrated rather than asserted.
+
+    This is the file the automation path used to produce whenever an operator
+    set ``enable_mqtt_exporter: true``: the parser accepts it — MQTT_USERNAME and
+    MQTT_PASSWORD are declared as allowed-empty — and generate-config.sh then
+    refuses it. The role's assert is what keeps this file from ever being
+    written; if this test ever stops failing the script, the guard has become
+    dead weight and should go, not be kept for decoration.
+    """
+    identity_file = tmp_path / "device-identity.conf"
+    identity_file.write_text(
+        render_template(enable_mqtt_exporter=True, mqtt_username="", mqtt_password=""),
+        encoding="utf-8",
+    )
+
+    assert run_agent_parser(identity_file).returncode == 0, "the parser should accept this file"
+
+    proc = run_generate_config(identity_file, tmp_path)
+    assert proc.returncode != 0
+    assert "MQTT_USERNAME" in proc.stderr
 
 
 # ── Criterion 16 — one file mode across every producer ─────────────────────
