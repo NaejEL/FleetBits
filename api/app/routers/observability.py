@@ -1,6 +1,7 @@
 """Observability proxy — forwards queries to Prometheus, Loki, and Alertmanager."""
 
 import re
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -58,26 +59,44 @@ async def _get_scoped_zone(db: AsyncSession, zone_id: str, user: TokenPayload) -
 # Prometheus proxy helpers
 # ──────────────────────────────────────────────────────
 
-async def _prom_query(query: str, timeout: float = 10.0) -> dict:
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.get(
-            f"{settings.PROMETHEUS_URL}/api/v1/query",
-            params={"query": query},
-        )
+async def _upstream_get(upstream: str, url: str, params: dict, timeout: float) -> Any:
+    """GET an observability backend and normalise every failure to 502.
+
+    A backend that is unreachable, times out, or resets the connection is a
+    *gateway* failure, not a server fault of this API: httpx raises
+    ``httpx.RequestError`` in those cases and, left uncaught, it escapes the
+    route as an unhandled exception (a raw 500 in production, and a propagated
+    ``ConnectError`` under the test transport). Mapping it here keeps a single
+    contract for callers: any upstream trouble is a 502.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, params=params)
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"{upstream} unreachable: {type(exc).__name__}"
+        ) from exc
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Prometheus error {resp.status_code}")
+        raise HTTPException(status_code=502, detail=f"{upstream} error {resp.status_code}")
     return resp.json()
+
+
+async def _prom_query(query: str, timeout: float = 10.0) -> dict:
+    return await _upstream_get(
+        "Prometheus",
+        f"{settings.PROMETHEUS_URL}/api/v1/query",
+        {"query": query},
+        timeout,
+    )
 
 
 async def _prom_query_range(query: str, start: str, end: str, step: str = "60s") -> dict:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            f"{settings.PROMETHEUS_URL}/api/v1/query_range",
-            params={"query": query, "start": start, "end": end, "step": step},
-        )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Prometheus error {resp.status_code}")
-    return resp.json()
+    return await _upstream_get(
+        "Prometheus",
+        f"{settings.PROMETHEUS_URL}/api/v1/query_range",
+        {"query": query, "start": start, "end": end, "step": step},
+        30.0,
+    )
 
 
 # ──────────────────────────────────────────────────────
@@ -166,14 +185,12 @@ async def query_recent_logs(
     label_selector = "{" + ",".join(filters) + "}" if filters else "{}"
     logql = label_selector
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(
-            f"{settings.LOKI_URL}/loki/api/v1/query_range",
-            params={"query": logql, "since": since, "limit": 200},
-        )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Loki error {resp.status_code}")
-    return resp.json()
+    return await _upstream_get(
+        "Loki",
+        f"{settings.LOKI_URL}/loki/api/v1/query_range",
+        {"query": logql, "since": since, "limit": 200},
+        15.0,
+    )
 
 
 # ──────────────────────────────────────────────────────
@@ -194,15 +211,12 @@ async def list_alerts(
     elif status == "resolved":
         params["active"] = "false"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            f"{settings.ALERTMANAGER_URL}/api/v2/alerts",
-            params=params,
-        )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Alertmanager error {resp.status_code}")
-
-    alerts = resp.json()
+    alerts = await _upstream_get(
+        "Alertmanager",
+        f"{settings.ALERTMANAGER_URL}/api/v2/alerts",
+        params,
+        10.0,
+    )
 
     if _is_site_scoped_user(user):
         if site and site != user.site_scope:

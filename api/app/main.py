@@ -15,7 +15,11 @@ from app.services.passwords import hash_password
 _log = logging.getLogger(__name__)
 
 _INSECURE_JWT_DEFAULT = "dev-jwt-secret-change-in-production"
-_INSECURE_OPERATOR_PASSWORD_DEFAULT = "change-me-immediately"
+# noqa: S105 is correct here — this is not a credential the API uses, it is the
+# denylist entry that makes _validate_security_settings() refuse to boot when
+# the shipped placeholder is still in place. Removing the literal would remove
+# the check; renaming the variable would only hide it from the linter.
+_INSECURE_OPERATOR_PASSWORD_DEFAULT = "change-me-immediately"  # noqa: S105
 
 
 def _validate_security_settings() -> None:

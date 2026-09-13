@@ -71,8 +71,26 @@ Interactive API docs: **http://localhost:8000/docs**
 ### Run tests
 
 ```bash
-pytest tests/ -v
+python3 -m venv .venv                  # Python 3.12 — see the note below
+./.venv/bin/pip install -r requirements.txt
+./.venv/bin/python -m pytest
 ```
+
+No `.env` is needed: `tests/conftest.py` supplies placeholder values for the
+three settings the API refuses to start without, and the suite runs entirely
+against in-memory SQLite.
+
+Two things to know about the interpreter and the markers:
+
+* **Python 3.12** is the supported interpreter — it is what the `Dockerfile` and
+  the CI workflows use. `pydantic==2.10.3` publishes no wheel for 3.13/3.14, so
+  on a newer interpreter the install fails while building `pydantic-core`.
+  Modernising the dependency set is separate work.
+* Tests marked **`crossrepo`** read `FleetBits-agent`, `FleetBits-platform` and
+  `FleetBits-ui` from the common working root, so check the four repositories out
+  side by side. They are deliberately *not* marked `security`: the security suite
+  runs inside the `fleet-api` container image, which holds `/app` alone.
+  `.github/workflows/api-tests.yml` runs the full suite with all four checked out.
 
 ### Security contributor guardrails
 
@@ -82,6 +100,23 @@ Run hooks locally before opening a PR (required for consistent security checks):
 pip install pre-commit
 pre-commit install
 pre-commit run --all-files
+
+# `--all-files` feeds the hooks "every file git TRACKS". A file that is only in
+# the working tree is invisible to the file-driven hooks, so a new script, test
+# or workflow escapes actionlint, check-yaml and trailing-whitespace until the
+# day it is committed. Sweep the real working set — tracked and not-yet-tracked,
+# .gitignore honoured — with:
+pre-commit run --files $(git ls-files -co --exclude-standard)
+
+# gitleaks needs neither sweep, and would ignore one: the upstream hook is
+# `gitleaks protect --staged`, which scans the git INDEX and reports
+# "0 commits scanned ... Passed" as long as nothing is staged — and it sets
+# pass_filenames: false, so `--files` is accepted and then dropped. This
+# repository overrides it with `gitleaks detect --no-git --source .`, a
+# filesystem scan that reads the CONTENT of every file under the repository
+# root — tracked or not, staged or not — on every run, `--all-files` included.
+# `.gitleaks.toml` keeps the local `.venv/` out of that walk; it narrows the
+# scanned paths, never the rule set.
 ```
 
 For security regressions, validate through the containerized path (no ad-hoc host package installs):
@@ -133,8 +168,10 @@ Credentials are compared with `secrets.compare_digest` to prevent timing attacks
 
 ### Per-device tokens
 
-Devices authenticate using per-device bearer tokens issued by `POST /api/v1/devices/provision`.
-Written to `/etc/fleet/device-identity.conf` by the Ansible bootstrap playbook.
+Devices authenticate using per-device bearer tokens issued by `POST /api/v1/devices/{id}/provision`.
+That route returns the device identity file itself — inert `KEY=value` lines as declared by
+`app/contracts/device_identity.py` — which `firstboot.sh` writes verbatim to
+`/etc/fleet/device-identity.conf`. The Ansible bootstrap playbook renders the same contract.
 Device tokens can only call device-scoped endpoints (heartbeat, provision) — not operator endpoints.
 
 ---
@@ -191,7 +228,7 @@ app/
 | `GET/POST` | `/api/v1/devices` | List / register devices |
 | `GET/PATCH` | `/api/v1/devices/{id}` | Read / update device |
 | `POST` | `/api/v1/devices/{id}/heartbeat` | Agent heartbeat (device-token auth) |
-| `POST` | `/api/v1/devices/provision` | First-boot self-enrollment |
+| `POST` | `/api/v1/devices/{id}/provision` | First-boot self-enrollment (returns device-identity.conf) |
 | `POST` | `/api/v1/devices/{id}/token` | Issue/retrieve device bearer token |
 | `GET` | `/api/v1/targets/{id}/manifest` | Resolved software manifest |
 | `GET/POST` | `/api/v1/profiles` | List / create profiles |

@@ -1,5 +1,19 @@
 """Shared pytest fixtures for FleetBits API security tests."""
 
+import os
+
+# app/config.py builds Settings() at import time and refuses to build without
+# FLEET_JWT_SECRET, FLEET_DOMAIN and OPERATOR_PASSWORD (that refusal is itself
+# under test — see tests/test_device_identity_contract.py). A fresh checkout has
+# no .env, so `./.venv/bin/python -m pytest` could not even import the app.
+#
+# These are placeholders, not secrets: the suite runs entirely against in-memory
+# SQLite and never reaches a real backing service. setdefault never overrides a
+# value supplied by the environment, so CI and docker compose keep theirs.
+os.environ.setdefault("FLEET_JWT_SECRET", "pytest-placeholder-not-a-secret-000000000000")
+os.environ.setdefault("FLEET_DOMAIN", "fleet.test.invalid")
+os.environ.setdefault("OPERATOR_PASSWORD", "pytest-placeholder")
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import ARRAY

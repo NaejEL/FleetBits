@@ -1,18 +1,19 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.device_identity import IdentityContractError
 from app.db import get_db
 from app.dependencies import get_current_user, get_device_from_bearer, require_roles
 from app.models.device import Device, ServiceUnit
 from app.models.token import ProvisionToken
 from app.schemas.device import (
     DeviceCreate,
-    DeviceIdentity,
     DeviceRead,
     DeviceRepoKeyRead,
     DeviceRepoKeyUpdate,
@@ -21,6 +22,7 @@ from app.schemas.device import (
     ServiceUnitRead,
 )
 from app.services.audit import write_audit_event
+from app.services.device_identity import render_identity_file
 from app.services.token import (
     TokenPayload,
     decode_provision_token,
@@ -87,19 +89,24 @@ async def list_services(
 _provision_bearer = HTTPBearer(auto_error=True)
 
 
-@router.post("/{device_id}/provision", response_model=DeviceIdentity)
+@router.post(
+    "/{device_id}/provision",
+    response_class=PlainTextResponse,
+    responses={200: {"content": {"text/plain": {}}}},
+)
 async def provision_device(
     device_id: str,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_provision_bearer),
     db: AsyncSession = Depends(get_db),
-):
-    """Issue device-identity.conf during first-boot enrollment.
+) -> PlainTextResponse:
+    """Issue /etc/fleet/device-identity.conf during first-boot enrollment.
 
     Authentication: provision JWT (technician) with device_id in allowed_device_ids.
-    
-    Returns all environment variables needed for /etc/fleet/device-identity.conf,
-    including MQTT credentials generated at provisioning time.
+
+    The response body IS the identity file: inert ``KEY=value`` lines as declared
+    by ``app.contracts.device_identity``, written to disk verbatim by
+    ``firstboot.sh``. It is never a JSON document and never shell-evaluated.
     """
     from jwt.exceptions import PyJWTError as JWTError
     from app.services.token import decode_token
@@ -126,7 +133,10 @@ async def provision_device(
         raise HTTPException(status_code=401, detail="Provision token not found")
     if pt.used_at is not None:
         raise HTTPException(status_code=409, detail="Provision token already used")
-    if pt.expires_at < datetime.now(UTC):
+    # Backends without a timezone-aware timestamp type (the SQLite test dialect)
+    # hand back a naive value; the column is always written in UTC.
+    expires_at = pt.expires_at if pt.expires_at.tzinfo else pt.expires_at.replace(tzinfo=UTC)
+    if expires_at < datetime.now(UTC):
         raise HTTPException(status_code=401, detail="Provision token expired")
     pt.used_at = datetime.now(UTC)
 
@@ -139,10 +149,7 @@ async def provision_device(
     zone_id = device.zone_id or "default"
     site_id = device.site_id or "default"
 
-    # Get observability URLs from config
     from app.config import settings
-    metrics_url = f"https://prometheus.{settings.FLEET_DOMAIN}"
-    logs_url = f"https://loki.{settings.FLEET_DOMAIN}"
 
     # Generate MQTT credentials for this device
     mqtt_username, mqtt_password = generate_mqtt_credentials(device_id)
@@ -172,22 +179,33 @@ async def provision_device(
     repo_token = generate_device_token()
     device.repo_token_hash = hash_token(repo_token)
 
-    return DeviceIdentity(
-        DEVICE_ID=device_id,
-        SITE_ID=site_id,
-        ZONE_ID=zone_id,
-        DEVICE_ROLE=device.role,
-        PROFILE=device.profile_id,
-        FLEET_AGENT_TOKEN=temp_bearer_token,
-        REPO_BASIC_TOKEN=repo_token,
-        FLEET_METRICS_URL=metrics_url,
-        FLEET_LOGS_URL=logs_url,
-        HEADSCALE_PREAUTH_KEY=None,  # To be filled by operator portal
-        MQTT_BROKER_HOST="mosquitto",
-        MQTT_BROKER_PORT=1883,
-        MQTT_USERNAME=mqtt_username,
-        MQTT_PASSWORD=mqtt_password,
-    )
+    try:
+        body = render_identity_file(
+            device_id=device_id,
+            site_id=site_id,
+            zone_id=zone_id,
+            device_role=device.role,
+            profile=device.profile_id,
+            ring=device.ring,
+            environment=settings.FLEET_ENV,
+            fleet_api_url=settings.FLEET_API_URL,
+            fleet_domain=settings.FLEET_DOMAIN,
+            fleet_agent_token=temp_bearer_token,
+            repo_basic_token=repo_token,
+            mqtt_username=mqtt_username,
+            mqtt_password=mqtt_password,
+            headscale_preauth_key="",  # To be filled by operator portal
+        )
+    except IdentityContractError as exc:
+        # Fail closed: never hand a device a file its parser will reject.
+        # The message names the offending key only — never the value, which
+        # may be a credential (GUIDELINES.md §3).
+        raise HTTPException(
+            status_code=500,
+            detail=f"Device record violates the identity contract: {exc}",
+        ) from exc
+
+    return PlainTextResponse(content=body, media_type="text/plain; charset=utf-8")
 
 
 # ──────────────────────────────────────────────────────
@@ -543,10 +561,10 @@ async def get_mqtt_acl(
     user: TokenPayload = Depends(require_roles("operator", "admin")),
 ):
     """Get MQTT ACL rules for all active devices.
-    
+
     Returns a dict mapping mqtt_username -> list of allowed topics.
     Used by Mosquitto bootstrap to generate acl_file.
-    
+
     Format:
         {
             "device_<device_id>": ["device/<device_id>/#", "$SYS/broker/clients/connected"],
@@ -556,7 +574,7 @@ async def get_mqtt_acl(
     q = select(Device).where(Device.mqtt_username.isnot(None))
     result = await db.execute(q)
     devices = result.scalars().all()
-    
+
     acl = {}
     for device in devices:
         # Each device is restricted to its own topic namespace only.
@@ -567,5 +585,5 @@ async def get_mqtt_acl(
 
     # Exporter gets read-only access to $SYS
     acl["fleet_exporter"] = ["$SYS/#"]
-    
+
     return acl

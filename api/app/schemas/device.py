@@ -71,31 +71,6 @@ class DeviceRepoKeyRead(BaseModel):
     repo_key_updated_at: datetime | None = None
 
 
-class DeviceIdentity(BaseModel):
-    """Device identity file (device-identity.conf) with enrollment secrets.
-    
-    Returned by POST /devices/provision endpoint.
-    Written by agent as shell-sourceable env vars during first-boot.
-    """
-    DEVICE_ID: str
-    SITE_ID: str
-    ZONE_ID: str
-    DEVICE_ROLE: str
-    PROFILE: str | None = None
-    FLEET_AGENT_TOKEN: str
-    # Separate credential scoped exclusively to APT repository access.
-    # Stored separately from FLEET_AGENT_TOKEN so APT auth compromise does not
-    # grant access to the fleet API and vice versa.
-    REPO_BASIC_TOKEN: str
-    FLEET_METRICS_URL: str
-    FLEET_LOGS_URL: str
-    HEADSCALE_PREAUTH_KEY: str | None = None
-    MQTT_BROKER_HOST: str = "mosquitto"
-    MQTT_BROKER_PORT: int = 1883
-    MQTT_USERNAME: str
-    MQTT_PASSWORD: str
-
-
 class HeartbeatPayload(BaseModel):
     """Sent by fleet-agent heartbeat.sh — updates last_seen. All fields optional."""
 

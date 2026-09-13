@@ -28,6 +28,12 @@ class Settings(BaseSettings):
 
     FLEET_ENV: str = "development"
     FLEET_API_URL: str = "http://localhost:8000"
+
+    # Public apex domain of the control plane (e.g. "fleet.example.com").
+    # Required: the device identity file handed out at provisioning is built
+    # from it (metrics.<domain>, logs.<domain>), so a missing value must fail
+    # at start-up rather than when a device enrolls.
+    FLEET_DOMAIN: str = Field(min_length=1)
     ALLOW_ALL_ORIGINS: bool = False
 
     # Bootstrap admin credentials — used ONLY to seed the first admin user

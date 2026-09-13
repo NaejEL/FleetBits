@@ -1,0 +1,65 @@
+---
+name: API Tests
+
+# The full pytest suite of this repository, run where its cross-repository
+# assertions can actually be evaluated: with FleetBits-agent, FleetBits-platform
+# and FleetBits-ui checked out side by side, exactly as a developer's working
+# root is laid out.
+#
+# This is the counterpart of security-regression-stack.yml, which runs
+# `pytest -q -m security tests` INSIDE the fleet-api container image. That image
+# contains /app and nothing else, so the tests marked `crossrepo` cannot run
+# there — and they are, deliberately, not marked `security`.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FleetBits-api
+        uses: actions/checkout@v4
+        with:
+          path: FleetBits-api
+
+      - name: Checkout FleetBits-agent
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/FleetBits-agent
+          path: FleetBits-agent
+
+      - name: Checkout FleetBits-platform
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/FleetBits-platform
+          path: FleetBits-platform
+
+      - name: Checkout FleetBits-ui
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/FleetBits-ui
+          path: FleetBits-ui
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create the virtualenv
+        working-directory: FleetBits-api
+        run: |
+          python3 -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt
+
+      - name: Run the test suite
+        working-directory: FleetBits-api
+        run: ./.venv/bin/python -m pytest

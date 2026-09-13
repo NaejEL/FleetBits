@@ -222,7 +222,9 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    # "bearer" is the OAuth 2.0 token TYPE (RFC 6749 §7.1), not a secret: it is
+    # the scheme name the client must put in front of access_token.
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int  # seconds
 
 
