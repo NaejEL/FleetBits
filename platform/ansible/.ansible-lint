@@ -1,0 +1,12 @@
+---
+# ansible-lint configuration — FleetBits-platform
+#
+# NOTHING is skipped here. The only setting below supplies a value for the
+# extra-var every operational playbook documents as REQUIRED at run time
+# (`target_group`, see the header of each playbook in playbooks/). Without it
+# ansible-lint cannot evaluate `hosts: "{{ target_group }}"` and reports
+# syntax-check[specific] on seven playbooks — a lint artefact, not a defect in
+# the playbooks. The value is only ever used to parse; run-tests.sh never runs
+# a playbook, and never against a real inventory.
+extra_vars:
+  target_group: all

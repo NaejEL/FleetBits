@@ -1,0 +1,43 @@
+---
+name: Platform Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FleetBits-platform
+        uses: actions/checkout@v4
+        with:
+          path: FleetBits-platform
+
+      - name: Checkout FleetBits-agent
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/FleetBits-agent
+          path: FleetBits-agent
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          python -m pip install --upgrade pip
+          pip install ansible-core ansible-lint
+
+      - name: Run the platform test suite
+        working-directory: FleetBits-platform
+        run: ./scripts/run-tests.sh

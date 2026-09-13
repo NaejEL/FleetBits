@@ -25,7 +25,7 @@
     repo: "deb [signed-by=/usr/share/keyrings/fleet-archive-keyring.gpg] {{ fleet_repo_url }} {{ aptly_repo_suite }} {{ aptly_repo_component }}"
     state: present
     filename: fleet
-  notify: update apt cache
+  notify: Update apt cache
 
 - name: Flush handlers (ensure apt cache is fresh before install)
   ansible.builtin.meta: flush_handlers
@@ -34,16 +34,19 @@
   ansible.builtin.apt:
     name: "fleet-agent={{ fleet_agent_version }}"
     state: present
-  notify: restart fleet-agent
+  notify: Restart fleet-agent
 
+# Mode 0600 — identical to firstboot.sh and scripts/postinst.sh in
+# FleetBits-agent. The file carries FLEET_AGENT_TOKEN, REPO_BASIC_TOKEN,
+# HEADSCALE_PREAUTH_KEY and MQTT_PASSWORD: root-only, no group read.
 - name: Deploy device-identity.conf
   ansible.builtin.template:
     src: device-identity.conf.j2
     dest: "{{ fleet_identity_path }}"
     owner: root
     group: root
-    mode: "0640"
-  notify: regenerate alloy config
+    mode: "0600"
+  notify: Regenerate collector config
 
 - name: Flush handlers (generate Alloy config before enabling services)
   ansible.builtin.meta: flush_handlers
@@ -62,10 +65,11 @@
     state: started
 
 - name: Verify fleet-agent is active
-  ansible.builtin.command: systemctl is-active fleet-agent
-  register: agent_state
+  ansible.builtin.systemd_service:
+    name: "{{ fleet_agent_service }}"
+  register: fleet_agent_state
   changed_when: false
-  failed_when: agent_state.stdout != "active"
+  failed_when: fleet_agent_state.status.ActiveState != "active"
   retries: 5
   delay: 3
-  until: agent_state.stdout == "active"
+  until: fleet_agent_state.status.ActiveState == "active"

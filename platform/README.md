@@ -199,6 +199,21 @@ Enable pre-commit hooks locally and run them before submitting a PR:
 pip install pre-commit
 pre-commit install
 pre-commit run --all-files
+
+# `--all-files` feeds the hooks "every file git TRACKS". A file that is only in
+# the working tree is invisible to the file-driven hooks, so a new script, test
+# or workflow escapes actionlint, check-yaml and trailing-whitespace until the
+# day it is committed. Sweep the real working set — tracked and not-yet-tracked,
+# .gitignore honoured — with:
+pre-commit run --files $(git ls-files -co --exclude-standard)
+
+# gitleaks needs neither sweep, and would ignore one: the upstream hook is
+# `gitleaks protect --staged`, which scans the git INDEX and reports
+# "0 commits scanned ... Passed" as long as nothing is staged — and it sets
+# pass_filenames: false, so `--files` is accepted and then dropped. This
+# repository overrides it with `gitleaks detect --no-git --source .`, a
+# filesystem scan that reads the CONTENT of every file under the repository
+# root — tracked or not, staged or not — on every run, `--all-files` included.
 ```
 
 Security/governance files are CODEOWNERS-protected and expected to receive owner review.

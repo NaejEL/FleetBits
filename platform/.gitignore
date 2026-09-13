@@ -59,3 +59,6 @@ FEATURE_ROADMAP.md
 SECURITY_ROADMAP.md
 
 scripts/tmp_*.py
+
+# pytest cache (tests/ entry point)
+.pytest_cache/
