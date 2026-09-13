@@ -1,0 +1,22 @@
+# gitleaks configuration for the pre-commit filesystem scan.
+#
+# The hook runs `gitleaks detect --no-git --source .`, which walks the whole
+# working tree — it has no notion of .gitignore. In this repository the working
+# tree also holds `.venv/`, the local virtualenv the README tells contributors
+# to create. `--no-git` therefore descends into ~170 MB of third-party packages
+# and reports ~200 findings, every one of them a test fixture shipped inside an
+# installed dependency (botocore, requests, urllib3 …) — none of it repository
+# content, none of it reachable by git.
+#
+# The allowlist below narrows the SCANNED PATHS, never the rule set: the
+# upstream default ruleset is loaded in full and applies to every file that is
+# actually part of this repository.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local virtualenv — not repository content, ignored by git (.gitignore)"
+paths = [
+  '''(^|/)\.venv/''',
+]

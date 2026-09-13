@@ -7,6 +7,7 @@ import binascii
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tarfile
 import io
@@ -102,21 +103,37 @@ async def _import_staged_package_to_repo(repo: str, staging_dir: str, force: boo
     return data if isinstance(data, dict) else {"result": data}
 
 
-async def _run_gpg_command(args: list[str]) -> tuple[bool, str]:
-    """Run a GPG command in a thread; return (success, output)."""
-    def _run() -> tuple[bool, str]:
-        try:
-            result = subprocess.run(
-                ["gpg", "--batch", "--yes"] + args,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            return result.returncode == 0, result.stdout + result.stderr
-        except Exception as e:
-            return False, str(e)
+#: Absolute path to the GPG binary, resolved ONCE, at import.
+#
+# Passing the bare name "gpg" to subprocess makes the binary that signs and
+# imports repository keys depend on whatever directory happens to come first in
+# the server process's PATH — an attacker who can write to any earlier entry
+# (or influence the unit's Environment=) chooses it. Resolving here pins one
+# absolute path for the life of the process; /usr/bin/gpg is the Debian
+# location and the fallback when the tool is not installed, so the call fails
+# with FileNotFoundError instead of silently running something else.
+GPG_BIN = shutil.which("gpg") or "/usr/bin/gpg"
 
-    return await run_in_threadpool(_run)
+
+def _run_gpg(
+    args: list[str], *, input: str | None = None, timeout: int
+) -> subprocess.CompletedProcess[str]:
+    """Run GPG with a fixed absolute argv[0], no shell, and a bounded timeout.
+
+    The single place in this module that spawns a process. Callers pass a list —
+    never a string — so there is no shell to quote for; the only caller-supplied
+    argv element anywhere is the GPG key id, which its route validates as 16 hex
+    characters before getting here. Key material travels on stdin, not in argv.
+    """
+    # S603 ("check for execution of untrusted input") is reviewed and exempted
+    # here, once, for the whole module: argv[0] is the absolute path pinned
+    # above, the arguments are a list so no shell is involved, and the only
+    # caller-supplied element is a 16-hex-character key id. The suppression is
+    # The call is kept on one physical line so the suppression lands on it in
+    # every ruff version: the one pinned in .pre-commit-config.yaml reports the
+    # argument list, newer ruff reports the call expression.
+    argv = [GPG_BIN, *args]
+    return subprocess.run(argv, input=input, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603
 
 
 def _extract_repo_token(auth_header: str | None) -> tuple[str | None, str | None]:
@@ -321,12 +338,7 @@ async def list_gpg_keys(_: tuple = Depends(require_roles("admin", "operator"))):
     """List all GPG keys imported in the Aptly GPG keyring."""
     try:
         result = await run_in_threadpool(
-            lambda: subprocess.run(
-                ["gpg", "--list-keys", "--with-colons"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            lambda: _run_gpg(["--list-keys", "--with-colons"], timeout=10)
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail="Failed to list GPG keys")
@@ -382,13 +394,7 @@ Expire-Date: 0
 
     try:
         result = await run_in_threadpool(
-            lambda: subprocess.run(
-                ["gpg", "--batch", "--generate-key"],
-                input=batch_config,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+            lambda: _run_gpg(["--batch", "--generate-key"], input=batch_config, timeout=60)
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"GPG generation failed: {result.stderr}")
@@ -444,13 +450,7 @@ async def import_gpg_key(
 
     try:
         result = await run_in_threadpool(
-            lambda: subprocess.run(
-                ["gpg", "--batch", "--import"],
-                input=armored_key,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            lambda: _run_gpg(["--batch", "--import"], input=armored_key, timeout=10)
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"GPG import failed: {result.stderr}")
@@ -486,12 +486,7 @@ async def delete_gpg_key(
 
     try:
         result = await run_in_threadpool(
-            lambda: subprocess.run(
-                ["gpg", "--batch", "--delete-keys", key_id],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            lambda: _run_gpg(["--batch", "--delete-keys", key_id], timeout=10)
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"GPG deletion failed: {result.stderr}")
@@ -707,12 +702,12 @@ async def list_repos_by_distribution(
 
 def _extract_deb_metadata(deb_data: bytes) -> dict[str, str]:
     """Extract package metadata from a .deb file.
-    
+
     A .deb file is an ar archive containing:
     - debian-binary (format version)
     - control.tar.gz (contains control files including control script)
     - data.tar.* (actual package contents)
-    
+
     This function extracts the control.tar.gz, decompresses it, and reads
     the 'control' file to extract metadata like Package, Version, Architecture.
     """
@@ -720,32 +715,32 @@ def _extract_deb_metadata(deb_data: bytes) -> dict[str, str]:
         # Read ar archive header and members
         if not deb_data.startswith(b"!<arch>\n"):
             raise ValueError("Invalid deb file: not an ar archive")
-        
+
         offset = 8  # Skip ar magic
         metadata = {}
-        
+
         while offset < len(deb_data):
             # ar member header is 60 bytes
             if offset + 60 > len(deb_data):
                 break
-            
+
             header = deb_data[offset:offset + 60]
             member_name = header[0:16].decode("utf-8", errors="ignore").rstrip()
             size_str = header[48:58].rstrip()
-            
+
             try:
                 member_size = int(size_str)
             except ValueError:
                 break
-            
+
             offset += 60
             member_data = deb_data[offset:offset + member_size]
             offset += member_size
-            
+
             # Align to even boundary
             if offset % 2:
                 offset += 1
-            
+
             # Look for control.tar.gz
             if "control.tar" in member_name:
                 # Debian control archive may be .gz, .xz, .bz2, or plain .tar.
@@ -769,7 +764,7 @@ def _extract_deb_metadata(deb_data: bytes) -> dict[str, str]:
                             control_file = tar.extractfile(member)
                             if control_file:
                                 control_text = control_file.read().decode('utf-8', errors='ignore')
-                                
+
                                 # Parse control file (RFC 822 format)
                                 for line in control_text.split('\n'):
                                     if ':' in line:
@@ -777,7 +772,7 @@ def _extract_deb_metadata(deb_data: bytes) -> dict[str, str]:
                                         metadata[key.strip()] = value.strip()
                             break
                 break
-        
+
         return metadata
     except Exception as e:
         return {"error": f"Failed to extract metadata: {str(e)}"}
@@ -795,20 +790,20 @@ async def upload_package(
     _: tuple = Depends(require_roles("operator", "admin")),
 ):
     """Upload a .deb package file and extract its metadata.
-    
+
     This endpoint:
     1. Receives a .deb file upload
     2. Extracts metadata from the control section
     3. Returns metadata for validation/review
     4. (In a later step) adds to Aptly repository
-    
+
     Args (from request body or query):
         file: The .deb package file
         repo: Target repository name (e.g., "bookworm-dev")
         distribution: Debian distribution codename (e.g., "bookworm")
         architecture: Package architecture (e.g., "amd64")
         is_overwrite: Allow overwriting existing package version
-    
+
     Returns:
         {
             "filename": "fleet-agent_1.0.0_amd64.deb",
@@ -831,34 +826,34 @@ async def upload_package(
         filename = (file.filename or "").strip()
         if not filename or not filename.lower().endswith('.deb'):
             raise HTTPException(status_code=400, detail="File must be a .deb package")
-        
+
         # Read file content
         content = await file.read()
         file_size = len(content)
-        
+
         # Validate minimum size (deb file should be at least several KB)
         if file_size < 1024:
             raise HTTPException(status_code=400, detail="File is too small to be a valid .deb package")
-        
+
         # Extract metadata
         metadata = _extract_deb_metadata(content)
-        
+
         if "error" in metadata:
             raise HTTPException(status_code=400, detail=metadata["error"])
-        
+
         # Extract key fields for validation
         package_name = metadata.get("Package", "UNKNOWN")
         version = metadata.get("Version", "UNKNOWN")
         arch = metadata.get("Architecture", "UNKNOWN")
-        
+
         # Validate metadata
         warnings = []
         if not package_name or package_name == "UNKNOWN":
             raise HTTPException(status_code=400, detail="Package name not found in control metadata")
-        
+
         if not version or version == "UNKNOWN":
             warnings.append("Version not found in metadata")
-        
+
         # Check for suspicious fields
         if not metadata.get("Maintainer"):
             warnings.append("No Maintainer field in control file")
@@ -866,7 +861,7 @@ async def upload_package(
         # Stage file in Aptly files API for optional later import.
         staging_dir = await _stage_package_in_aptly_files(filename=filename, content=content)
         package_reference = f"{staging_dir}:{filename}"
-        
+
         # Audit log
         await _safe_audit_log(
             actor=user.sub,
@@ -886,7 +881,7 @@ async def upload_package(
             },
             ip_address=request.client.host if request.client else None,
         )
-        
+
         return {
             "filename": filename,
             "package_reference": package_reference,
@@ -911,16 +906,16 @@ async def add_package_to_repo(
     _: tuple = Depends(require_roles("operator", "admin")),
 ):
     """Add a previously uploaded/scanned package to an Aptly repository.
-    
+
     This is called after the UI has validated the package metadata.
-    
+
     Args:
         payload: {
             "package_reference": "fleet-agent_1.0.0_amd64.deb",  # or internal reference
             "repo": "bookworm-dev",
             "force": false  # allow overwriting existing version
         }
-    
+
     Returns:
         {
             "status": "added",
@@ -933,7 +928,7 @@ async def add_package_to_repo(
         package_ref = payload.get("package_reference", "")
         repo = payload.get("repo", "")
         force = payload.get("force", False)
-        
+
         if not package_ref or not repo:
             raise HTTPException(status_code=400, detail="package_reference and repo required")
 
@@ -949,7 +944,7 @@ async def add_package_to_repo(
             raise HTTPException(status_code=400, detail="Invalid package_reference")
 
         import_result = await _import_staged_package_to_repo(repo=repo, staging_dir=staging_dir, force=bool(force))
-        
+
         # Audit log
         await _safe_audit_log(
             actor=user.sub,
@@ -964,7 +959,7 @@ async def add_package_to_repo(
             },
             ip_address=request.client.host if request.client else None,
         )
-        
+
         return {
             "status": "added",
             "repo": repo,
@@ -1065,4 +1060,3 @@ async def execute_promotion(
         "plan": plan,
         "aptly": add_result,
     }
-

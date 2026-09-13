@@ -773,4 +773,3 @@ class TestEndToEndTelemetryFlow:
         assert forwarded_query.count('site="site-a"') == 1, (
             f"site label must not be duplicated: {forwarded_query!r}"
         )
-
