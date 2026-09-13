@@ -1,0 +1,21 @@
+# Racine de travail FleetBits — cette racine n'est pas un dépôt git.
+# Ce fichier documente et protège les artefacts de l'usine logicielle au cas où
+# la racine serait un jour versionnée, et sert de référence aux outils qui le lisent.
+
+# Journaux d'exécution headless de l'usine
+factory-logs/
+
+# Environnements virtuels Python de travail (venv du dépôt -platform, hors dépôt)
+.venv/
+.venv-platform/
+
+# Caches Python
+__pycache__/
+.pytest_cache/
+
+# Éditeur / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

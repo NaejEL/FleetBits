@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.venv/**)",
+      "Read(./**/.venv/**)",
+      "Read(./**/__pycache__/**)",
+      "Read(./.pytest_cache/**)",
+      "Read(./**/.pytest_cache/**)",
+      "Read(./**/*.egg-info/**)",
+      "Read(./**/htmlcov/**)",
+      "Read(./FleetBits-agent/dist/**)",
+      "Read(./factory-logs/**)",
+      "Read(./.git/objects/**)",
+      "Read(./**/.git/objects/**)"
+    ]
+  }
+}

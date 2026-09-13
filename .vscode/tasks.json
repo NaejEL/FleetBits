@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "factorySpec",
+      "type": "promptString",
+      "description": "Chemin de la spec approuvée (specs/SPEC-*.md)"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "Factory: CI run",
+      "type": "shell",
+      "command": "./ci/factory.sh ${input:factorySpec}",
+      "windows": {
+        "command": "pwsh -File ci/factory.ps1 ${input:factorySpec}"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Factory: CI run (YOLO)",
+      "type": "shell",
+      "command": "./ci/factory.sh --yolo ${input:factorySpec}",
+      "windows": {
+        "command": "pwsh -File ci/factory.ps1 ${input:factorySpec} -Yolo"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Factory: nouvelle spec (session)",
+      "type": "shell",
+      "command": "echo 'Ouvrir Claude Code et taper : /factory-run \"<votre besoin>\"'",
+      "windows": {
+        "command": "Write-Host 'Ouvrir Claude Code et taper : /factory-run \"<votre besoin>\"'"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}
