@@ -1,0 +1,76 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+
+  # Secret scanning — catches tokens, API keys, credentials before they reach git history
+  #
+  # `entry` overrides the upstream one, which is
+  # `gitleaks protect --verbose --redact --staged`: that scans the git INDEX, so
+  # it reports "0 commits scanned / Passed" on a working tree where nothing has
+  # been staged, no matter what the files contain. `pre-commit run gitleaks
+  # --files <path>` did not help either — the upstream hook sets
+  # pass_filenames: false, so the file list was accepted and then ignored.
+  # `detect --no-git --source .` reads the CONTENT of every file under the
+  # repository root, tracked or not, staged or not, which is what a pre-commit
+  # secret scan is supposed to guarantee for a change that carries device
+  # credentials. `--config .gitleaks.toml` keeps the local `.venv/` out of the
+  # walk (see that file); the rule set stays the upstream default.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        entry: gitleaks detect --no-git --redact --verbose --source . --config .gitleaks.toml
+        pass_filenames: false
+
+  # Python security SAST (bandit S-rules)
+  # pass_filenames: false — pre-commit otherwise appends the staged file list
+  # after `-ll`, and bandit's argument parser rejects the whole invocation
+  # ("unrecognized arguments: app/__init__.py ..."), so the hook exited 2 on
+  # every run without ever analysing anything. `-r app` already names the tree.
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: ["-r", "app", "-ll"]
+        pass_filenames: false
+
+  # Ruff security lint rules (S-prefix = bandit-equivalent checks)
+  # Same target as the bandit hook above and as the command documented in
+  # README.md: `ruff check --select S app`. Without `app` + pass_filenames:false
+  # pre-commit hands ruff every Python file in the repository, and the report is
+  # swamped by ~200 S101 "use of assert" hits in tests/ — `assert` is how pytest
+  # expresses an assertion, so banning it there would mean banning tests. This
+  # narrows the file set, never the rule set: app/ is still checked with the
+  # full S ruleset, exactly as before.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: ["--select", "S", "app"]
+        pass_filenames: false
+
+  # Dependency vulnerability scan — catches CVEs before they reach CI (pip-audit)
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit (CVE scan)
+        language: python
+        entry: pip-audit
+        args: ["-r", "requirements.txt", "--desc"]
+        pass_filenames: false
+        files: requirements\.txt
+        additional_dependencies: ["pip-audit"]
+
+  # GitHub Actions workflow linter — catches invalid step structure, bad expressions
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.4
+    hooks:
+      - id: actionlint

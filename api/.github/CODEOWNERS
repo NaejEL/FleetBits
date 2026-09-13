@@ -1,0 +1,7 @@
+# CODEOWNERS
+
+* @NaejEL
+
+.github/workflows/* @NaejEL
+.github/PULL_REQUEST_TEMPLATE.md @NaejEL
+.pre-commit-config.yaml @NaejEL

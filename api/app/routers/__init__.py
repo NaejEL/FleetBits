@@ -1,0 +1,31 @@
+from app.routers import (
+    audit,
+    auth,
+    deployments,
+    devices,
+    hotfixes,
+    observability,
+    operations,
+    overrides,
+    packages,
+    profiles,
+    sites,
+    telemetry,
+    zones,
+)
+
+__all__ = [
+    "audit",
+    "auth",
+    "deployments",
+    "devices",
+    "hotfixes",
+    "observability",
+    "operations",
+    "overrides",
+    "packages",
+    "profiles",
+    "sites",
+    "telemetry",
+    "zones",
+]
