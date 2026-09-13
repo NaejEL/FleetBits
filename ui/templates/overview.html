@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+
+{% block title %}Fleet Overview — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}Fleet Overview{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-create-site').showModal()">+ New Site</button>
+  <a href="{{ url_for('hotfixes.hotfix_console') }}" class="btn btn-warning btn-sm">Hotfix</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">FLEET OVERVIEW</h1>
+  <span class="page-refresh">Refreshed: <span id="refresh-time">—</span></span>
+</div>
+
+<!-- Platform summary stats -->
+<section class="card-section">
+  <h2 class="section-title">PLATFORM SUMMARY</h2>
+  <div class="stat-grid">
+
+    <div class="stat-card stat-neutral">
+      <div class="stat-value">{{ stats.sites }}</div>
+      <div class="stat-label">Sites</div>
+    </div>
+
+    <div class="stat-card stat-neutral">
+      <div class="stat-value">{{ stats.zones }}</div>
+      <div class="stat-label">Zones</div>
+    </div>
+
+    <div class="stat-card
+      {%- if stats.devices == 0 %} stat-neutral
+      {%- elif stats.devices_online == stats.devices %} stat-ok
+      {%- elif stats.devices_online > 0 %} stat-warn
+      {%- else %} stat-critical{%- endif %}">
+      <div class="stat-value">
+        {{ stats.devices_online }}<span class="stat-total">/{{ stats.devices }}</span>
+      </div>
+      <div class="stat-label">Devices Online</div>
+    </div>
+
+    <div class="stat-card
+      {%- if stats.alerts_critical > 0 %} stat-critical
+      {%- elif stats.alerts_warning > 0 %} stat-warn
+      {%- else %} stat-ok{%- endif %}">
+      <div class="stat-value">{{ stats.alerts_critical + stats.alerts_warning }}</div>
+      <div class="stat-label">Open Alerts</div>
+      {%- if stats.alerts_critical > 0 %}
+        <div class="stat-sub">{{ stats.alerts_critical }} critical</div>
+      {%- endif %}
+    </div>
+
+    <div class="stat-card {% if stats.active_deployments > 0 %}stat-warn{% else %}stat-neutral{% endif %}">
+      <div class="stat-value">{{ stats.active_deployments }}</div>
+      <div class="stat-label">Active Rollouts</div>
+    </div>
+
+    <div class="stat-card stat-neutral">
+      <div class="stat-value">{{ stats.profiles }}</div>
+      <div class="stat-label">Profiles</div>
+    </div>
+
+    <div class="stat-card {% if stats.active_overrides > 0 %}stat-warn{% else %}stat-neutral{% endif %}">
+      <div class="stat-value">{{ stats.active_overrides }}</div>
+      <div class="stat-label">Overrides</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Site status cards -->
+<section class="card-section">
+  <h2 class="section-title">SITE STATUS</h2>
+  {% if sites %}
+    <div class="site-grid">
+      {% for site in sites %}
+        <a href="{{ url_for('inventory.site_view', site_id=site.site_id) }}" class="site-card
+          {%- if site.status == 'critical' %} status-critical
+          {%- elif site.status == 'warning' %} status-warning
+          {%- else %} status-ok
+          {%- endif %}">
+          <div class="site-card-status">
+            {%- if site.status == 'critical' %}<svg class="icon icon-lg icon-err"><use href="#icon-x-circle"/></svg>
+            {%- elif site.status == 'warning' %}<svg class="icon icon-lg icon-warn"><use href="#icon-warning"/></svg>
+            {%- else %}<svg class="icon icon-lg icon-ok"><use href="#icon-check"/></svg>{% endif %}
+          </div>
+          <div class="site-card-name">{{ site.name | upper }}</div>
+          <div class="site-card-detail">
+            {{ site.zone_count | default('?') }} zones
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+    <p class="hint">Click any site card to open Site View</p>
+  {% else %}
+    <p class="empty-state">No sites found.</p>
+  {% endif %}
+</section>
+
+<!-- Platform Infrastructure -->
+<section class="card-section">
+  <h2 class="section-title">
+    PLATFORM INFRASTRUCTURE
+    <a href="{{ url_for('monitoring.platform_monitoring') }}" class="btn btn-ghost btn-xs float-right">Full Monitoring ↗</a>
+  </h2>
+  <div class="site-grid">
+    <a href="{{ url_for('monitoring.platform_monitoring') }}" class="site-card
+      {%- if stats.alerts_critical > 0 %} status-critical
+      {%- elif stats.alerts_warning > 0 %} status-warning
+      {%- else %} status-ok{%- endif %}">
+      <div class="site-card-status">
+        {%- if stats.alerts_critical > 0 %}<svg class="icon icon-lg icon-err"><use href="#icon-x-circle"/></svg>
+        {%- elif stats.alerts_warning > 0 %}<svg class="icon icon-lg icon-warn"><use href="#icon-warning"/></svg>
+        {%- else %}<svg class="icon icon-lg icon-ok"><use href="#icon-check"/></svg>{% endif %}
+      </div>
+      <div class="site-card-name">CONTROL PLANE</div>
+      <div class="site-card-detail">
+        {% if platform_devices %}
+          {{ platform_devices | length }} VPS agent{{ 's' if platform_devices | length != 1 else '' }}
+        {% else %}
+          VPS agent not enrolled
+        {% endif %}
+      </div>
+    </a>
+  </div>
+  <div class="grafana-panels" style="margin-top:1rem">
+    <div class="grafana-panel">
+      <div class="panel-label">Platform services — Container CPU (last 3h)</div>
+      <iframe
+        src="{{ grafana_url }}/d-solo/platform-services/platform-services?panelId=1&orgId=1&theme=dark&from=now-3h&to=now&kiosk"
+        frameborder="0" allowfullscreen></iframe>
+      <a href="{{ grafana_url }}/d/platform-services/platform-services"
+         target="_blank" rel="noopener" class="panel-link">↗ Open in Grafana</a>
+    </div>
+  </div>
+</section>
+
+<!-- Fleet-wide device filter/search -->
+<section class="card-section">
+  <h2 class="section-title">FLEET DEVICE FILTER</h2>
+  <form method="get" action="{{ url_for('inventory.overview') }}" class="filter-row">
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="Search device ID / hostname / role">
+
+    <select name="site_id">
+      <option value="">— All sites —</option>
+      {% for site in sites %}
+        <option value="{{ site.site_id }}" {% if filters.site_id == site.site_id %}selected{% endif %}>{{ site.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="zone_id">
+      <option value="">— All zones —</option>
+      {% for zone in zone_map.values() %}
+        <option value="{{ zone.zone_id }}" {% if filters.zone_id == zone.zone_id %}selected{% endif %}>{{ zone.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="role">
+      <option value="">— All roles —</option>
+      {% for r in device_roles %}
+        <option value="{{ r }}" {% if filters.role == r %}selected{% endif %}>{{ r }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="ring">
+      <option value="">— All rings —</option>
+      <option value="0" {% if filters.ring == '0' %}selected{% endif %}>0 — Lab</option>
+      <option value="1" {% if filters.ring == '1' %}selected{% endif %}>1 — Canary</option>
+      <option value="2" {% if filters.ring == '2' %}selected{% endif %}>2 — Production</option>
+    </select>
+
+    <select name="health">
+      <option value="">— Any health —</option>
+      <option value="online" {% if filters.health == 'online' %}selected{% endif %}>Online</option>
+      <option value="offline" {% if filters.health == 'offline' %}selected{% endif %}>Offline</option>
+    </select>
+
+    <select name="last_seen_minutes">
+      <option value="">— Any last-seen —</option>
+      <option value="5" {% if filters.last_seen_minutes == '5' %}selected{% endif %}>Seen ≤ 5 min</option>
+      <option value="15" {% if filters.last_seen_minutes == '15' %}selected{% endif %}>Seen ≤ 15 min</option>
+      <option value="60" {% if filters.last_seen_minutes == '60' %}selected{% endif %}>Seen ≤ 60 min</option>
+    </select>
+
+    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+    <a href="{{ url_for('inventory.overview') }}" class="btn btn-ghost btn-sm">Reset</a>
+  </form>
+
+  {% if filtered_devices %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>Role</th>
+          <th>Site</th>
+          <th>Zone</th>
+          <th>Ring</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in filtered_devices %}
+          <tr>
+            <td>
+              <a href="{{ url_for('inventory.device_view', device_id=d.device_id) }}">{{ d.device_id }}</a>
+              <div class="text-muted">{{ d.hostname | default('—') }}</div>
+            </td>
+            <td>{{ d.role | default('—') }}</td>
+            <td>{{ d.site_id | default('—') }}</td>
+            <td>{{ d.zone_id | default('—') }}</td>
+            <td>{{ d.ring if d.ring is not none else '—' }}</td>
+            <td>{{ d.last_seen | default('—') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No devices match current filters.</p>
+  {% endif %}
+</section>
+
+<!-- Open alerts -->
+<section class="card-section">
+  <h2 class="section-title">OPEN ALERTS</h2>
+  {% if alerts %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Device</th>
+          <th>Summary</th>
+          <th>Since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alert in alerts %}
+          <tr class="alert-row severity-{{ alert.labels.severity | default('info') }}">
+            <td>
+              {%- if alert.labels.severity == 'critical' %}P1
+              {%- elif alert.labels.severity == 'warning' %}P2
+              {%- else %}INFO{% endif %}
+            </td>
+            <td>{{ alert.labels.device_id | default('—') }}</td>
+            <td>{{ alert.annotations.summary | default(alert.labels.alertname) }}</td>
+            <td>{{ alert.startsAt | default('') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state status-ok-text">No open alerts</p>
+  {% endif %}
+</section>
+
+<!-- Active rollouts -->
+<section class="card-section">
+  <h2 class="section-title">ACTIVE ROLLOUT</h2>
+  {% if active_deployments %}
+    {% for dep in active_deployments %}
+      {# Determine which rings are complete based on rollout_mode #}
+      {%- set mode = dep.rollout_mode | default('') -%}
+      {%- set current_ring = 0 if mode == 'ring-0' else (1 if mode == 'ring-1' else (2 if mode == 'ring-2' else -1)) -%}
+      <div class="rollout-banner">
+        <span class="rollout-name">{{ dep.artifact_ref | default(dep.component ~ ' ' ~ dep.version) }}</span>
+        <span class="rollout-status"><svg class="icon"><use href="#icon-arrows-path"/></svg> {{ dep.status }}</span>
+        {%- if current_ring >= 0 %}
+          <span class="rollout-rings" title="Rollout progress through rings">
+            {%- for r in [0, 1, 2] %}
+              <span class="ring-step
+                {%- if r < current_ring %} ring-done
+                {%- elif r == current_ring %} ring-active
+                {%- else %} ring-pending{%- endif %}">{{ r }}</span>
+            {%- endfor %}
+          </span>
+        {%- else %}
+          <span class="rollout-ring">{{ dep.target_scope | default({}) | tojson }}</span>
+        {%- endif %}
+        <a href="{{ url_for('deployments.deployment_center') }}" class="btn btn-ghost btn-sm">
+          View in Deployment Center →
+        </a>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No active rollouts.</p>
+  {% endif %}
+</section>
+
+<!-- Deployment drift -->
+<section class="card-section">
+  <h2 class="section-title">DEPLOYMENT DRIFT</h2>
+  {% if drift_targets %}
+    <p class="hint">
+      <svg class="icon icon-warn"><use href="#icon-warning"/></svg>
+      {{ drift_targets | length }} target(s) have active overrides diverging from the profile baseline.
+      <a href="{{ url_for('admin.overrides_list') }}" class="link-subtle">Manage overrides →</a>
+    </p>
+    <table class="data-table">
+      <thead>
+        <tr><th>Scope</th><th>Target ID</th><th>Overridden Components</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in drift_targets %}
+          <tr>
+            <td><span class="badge">{{ entry.scope }}</span></td>
+            <td><code>{{ entry.target_id }}</code></td>
+            <td>{{ entry.components | join(', ') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state status-ok-text">
+      <svg class="icon icon-ok"><use href="#icon-check"/></svg>
+      No configuration drift — all targets match their profile baseline.
+    </p>
+  {% endif %}
+</section>
+
+<!-- Create Site modal -->
+<dialog id="modal-create-site">
+  <div class="dialog-header">
+    <span>CREATE SITE</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('inventory.create_site_post') }}">
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">
+            Site ID *
+            <span class="tip">
+              <span class="tip-icon">?</span>
+              <span class="tip-text">Permanent slug for this site. Lowercase letters, digits and hyphens only. Used in API paths and device IDs. Cannot be changed after creation.</span>
+            </span>
+          </label>
+          <input name="site_id" class="form-control" placeholder="paris" required pattern="[a-z0-9\-]+" />
+          <span class="form-hint">Lowercase, hyphens only</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Display Name *</label>
+          <input name="name" class="form-control" placeholder="Paris Nord" required />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">
+          Timezone
+          <span class="tip">
+            <span class="tip-icon">?</span>
+            <span class="tip-text">IANA timezone identifier for this site. Used to localise quiet-hour alert windows. Example: Europe/Paris, America/New_York.</span>
+          </span>
+        </label>
+        <input name="timezone" class="form-control" placeholder="Europe/Paris" value="UTC" />
+        <span class="form-hint">IANA timezone, e.g. Europe/Paris</span>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Create Site</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+</script>
+{% endblock %}

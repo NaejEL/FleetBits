@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Platform Monitoring — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Monitoring</strong>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">PLATFORM MONITORING</h1>
+  <span class="page-refresh">Refreshed: <span id="refresh-time">—</span></span>
+</div>
+
+<!-- Host Vitals — Grafana iframe -->
+<section class="card-section">
+  <h2 class="section-title">
+    HOST VITALS
+    <a href="{{ grafana_url }}/d/platform-services/platform-services"
+       target="_blank" rel="noopener" class="btn btn-ghost btn-xs float-right">⊞ Full dashboard ↗</a>
+  </h2>
+  <div class="grafana-panels grafana-panels--stacked">
+    <div class="grafana-panel">
+      <div class="panel-label">Platform services overview (last 3h)</div>
+      <iframe
+        src="{{ grafana_url }}/d-solo/platform-services/platform-services?panelId=1&orgId=1&theme=dark&from=now-3h&to=now&kiosk"
+        frameborder="0" allowfullscreen></iframe>
+      <a href="{{ grafana_url }}/d/platform-services/platform-services"
+         target="_blank" rel="noopener" class="panel-link">↗ Open in Grafana</a>
+    </div>
+  </div>
+</section>
+
+<!-- Platform Services -->
+<section class="card-section">
+  <h2 class="section-title">PLATFORM SERVICES</h2>
+  {% if targets %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Endpoint</th>
+          <th>Status</th>
+          <th>Last Scrape</th>
+          <th>Duration</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in targets %}
+          <tr>
+            <td><strong>{{ t.labels.job | default(t.scrapePool) }}</strong></td>
+            <td><code>{{ t.scrapeUrl }}</code></td>
+            <td>
+              <span class="health-badge health-{{ t.health }}">
+                {%- if t.health == 'up' %}UP
+                {%- elif t.health == 'down' %}DOWN
+                {%- else %}UNKNOWN{% endif %}
+              </span>
+            </td>
+            <td class="text-muted">
+              {{ t.lastScrape | replace('T', ' ') | truncate(19, True, '') if t.lastScrape else '—' }}
+            </td>
+            <td class="text-muted">
+              {% if t.lastScrapeDuration %}{{ "%.0f ms" % (t.lastScrapeDuration * 1000) }}{% else %}—{% endif %}
+            </td>
+            <td class="text-muted">{{ t.lastError if t.lastError else '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">Cannot reach Prometheus — service health unavailable.</p>
+  {% endif %}
+</section>
+
+<!-- Active Alerts -->
+<section class="card-section">
+  <h2 class="section-title">
+    ACTIVE ALERTS
+    <a href="/alertmanager"
+       target="_blank" rel="noopener" class="btn btn-ghost btn-xs float-right">Open Alertmanager ↗</a>
+  </h2>
+  {% if alerts %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Alert</th>
+          <th>Instance / Site</th>
+          <th>Summary</th>
+          <th>Since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in alerts %}
+          <tr class="alert-row severity-{{ a.labels.severity | default('info') }}">
+            <td>
+              {%- if a.labels.severity == 'critical' %}P1
+              {%- elif a.labels.severity == 'warning' %}P2
+              {%- else %}INFO{% endif %}
+            </td>
+            <td>{{ a.labels.alertname | default('—') }}</td>
+            <td class="text-muted">{{ a.labels.instance | default(a.labels.get('site', '—')) }}</td>
+            <td>{{ a.annotations.summary | default('—') }}</td>
+            <td class="text-muted">
+              {{ a.startsAt | replace('T', ' ') | truncate(19, True, '') if a.startsAt else '—' }}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state status-ok-text">No active alerts</p>
+  {% endif %}
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+  // Auto-refresh every 30 seconds
+  setTimeout(() => window.location.reload(), 30000);
+</script>
+{% endblock %}

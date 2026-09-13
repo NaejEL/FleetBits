@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Deployment Profiles — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <strong>Profiles</strong>
+{% endblock %}
+
+{% block topbar_actions %}
+  <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-create-profile').showModal()">+ New Profile</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">DEPLOYMENT PROFILES</h1>
+  <p class="page-sub">A profile defines the baseline component stack deployed to every zone that references it.</p>
+</div>
+
+<section class="card-section">
+  {% if profiles %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Profile ID</th>
+          <th>Name</th>
+          <th>Baseline Stack</th>
+          <th style="width:80px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in profiles %}
+          <tr>
+            <td><code>{{ p.profile_id }}</code></td>
+            <td>{{ p.name }}</td>
+            <td>
+              <pre class="profile-stack">{{ p.baseline_stack | tojson(indent=2) }}</pre>
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('admin.delete_profile_post', profile_id=p.profile_id) }}"
+                    onsubmit="return confirm('Delete profile {{ p.profile_id }}?')">
+                <button type="submit" class="btn btn-danger btn-xs">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">No profiles defined yet. Create one to assign a baseline stack to zones.</p>
+  {% endif %}
+</section>
+
+<!-- Create Profile modal -->
+<dialog id="modal-create-profile">
+  <div class="dialog-header">
+    <span>CREATE DEPLOYMENT PROFILE</span>
+    <button class="btn btn-ghost btn-xs" onclick="this.closest('dialog').close()">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('admin.create_profile_post') }}">
+    <div class="dialog-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Profile ID *</label>
+          <input name="profile_id" class="form-control" placeholder="standard-rpi" required pattern="[a-z0-9\-]+" />
+          <span class="form-hint">Lowercase, hyphens only</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Name *</label>
+          <input name="name" class="form-control" placeholder="Standard RPi Stack" required />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Baseline Stack (JSON) *</label>
+        <textarea name="baseline_stack" class="json-editor" required
+          placeholder='{
+  "fleet-puzzle-player": "1.4.2",
+  "fleet-agent": "2.1.0"
+}'></textarea>
+        <span class="form-hint">Map of <code>component_name → version</code>. Must be valid JSON.</span>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Create Profile</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

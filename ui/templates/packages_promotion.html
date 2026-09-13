@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Package Promotion — Fleet Manager{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{{ url_for('inventory.overview') }}">Overview</a>
+  › <a href="{{ url_for('packages.packages_browser') }}">Packages</a>
+  › <strong>Promotion Workflow</strong>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">PACKAGE PROMOTION WORKFLOW</h1>
+  <p class="page-sub">
+    Promote packages between channels with controlled paths:
+    <strong>dev → staging</strong> and <strong>staging → prod</strong> (same distribution only).
+  </p>
+</div>
+
+<section class="card-section">
+  <h2 class="section-title">PROMOTION PLAN</h2>
+  <form method="get" action="{{ url_for('packages.packages_promotion') }}" style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.75rem;align-items:end;">
+    <div>
+      <label for="source_repo">Source repository</label>
+      <select id="source_repo" name="source_repo" required>
+        <option value="">Select source repo…</option>
+        {% for repo in repos %}
+          <option value="{{ repo }}" {{ 'selected' if repo == source_repo else '' }}>{{ repo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label for="target_repo">Target repository</label>
+      <select id="target_repo" name="target_repo" required>
+        <option value="">Select target repo…</option>
+        {% for repo in repos %}
+          <option value="{{ repo }}" {{ 'selected' if repo == target_repo else '' }}>{{ repo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Compute Diff</button>
+  </form>
+
+  {% if plan %}
+    <div style="margin-top:1rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
+      <span class="pkg-badge dev">Source total: {{ plan.summary.source_total }}</span>
+      <span class="pkg-badge staging">Target total: {{ plan.summary.target_total }}</span>
+      <span class="pkg-badge" style="background:#e8f7ee;color:#0f5132;">To add: {{ plan.summary.to_add }}</span>
+      <span class="pkg-badge" style="background:#fff3cd;color:#664d03;">To update: {{ plan.summary.to_update }}</span>
+      <span class="pkg-badge" style="background:#f0f0f0;color:#333;">Unchanged: {{ plan.summary.unchanged }}</span>
+    </div>
+
+    <div style="margin-top:1rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+      <form method="post" action="{{ url_for('packages.packages_promotion_execute') }}" onsubmit="return confirm('Promote packages from ' + {{ plan.source_repo|tojson }} + ' to ' + {{ plan.target_repo|tojson }} + '?');" style="display:flex;gap:0.75rem;align-items:center;">
+        <input type="hidden" name="source_repo" value="{{ plan.source_repo }}">
+        <input type="hidden" name="target_repo" value="{{ plan.target_repo }}">
+        <label style="display:flex;align-items:center;gap:0.35rem;">
+          <input type="checkbox" name="force_replace">
+          Force replace existing versions
+        </label>
+        <button type="submit" class="btn btn-warning">Promote {{ plan.source_repo }} → {{ plan.target_repo }}</button>
+      </form>
+    </div>
+
+    {% if plan.diff.to_add %}
+      <h3 style="margin-top:1.25rem;">Packages to add</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>Arch</th>
+            <th>Source version</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in plan.diff.to_add %}
+            <tr>
+              <td><code>{{ item.package }}</code></td>
+              <td>{{ item.architecture }}</td>
+              <td>{{ item.source_version }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if plan.diff.to_update %}
+      <h3 style="margin-top:1.25rem;">Packages to update</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>Arch</th>
+            <th>Target version</th>
+            <th>Source version</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in plan.diff.to_update %}
+            <tr>
+              <td><code>{{ item.package }}</code></td>
+              <td>{{ item.architecture }}</td>
+              <td>{{ item.target_version }}</td>
+              <td>{{ item.source_version }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if (plan.summary.to_add == 0 and plan.summary.to_update == 0) %}
+      <p class="empty-state" style="margin-top:1rem;">No differences to promote — target is already up to date.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty-state" style="margin-top:1rem;">Select source and target repositories to compute a promotion diff.</p>
+  {% endif %}
+</section>
+{% endblock %}

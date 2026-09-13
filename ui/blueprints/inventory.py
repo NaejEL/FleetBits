@@ -1,0 +1,546 @@
+"""Inventory blueprint — Fleet Overview, Site View, Zone View, Device View."""
+
+from datetime import UTC, datetime, timedelta
+from functools import wraps
+
+from flask import (
+    Blueprint,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+
+import api_client as api
+from api_client import ApiError, Unauthorized
+
+bp = Blueprint("inventory", __name__)
+
+
+def _login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "jwt" not in session:
+            return redirect(url_for("auth.login_page"))
+        try:
+            return f(*args, **kwargs)
+        except Unauthorized:
+            session.clear()
+            flash("Your session has expired. Please log in again.", "warning")
+            return redirect(url_for("auth.login_page"))
+    return decorated
+
+
+@bp.route("/api-proxy/sites")
+@_login_required
+def api_proxy_sites():
+    try:
+        return jsonify(api.get_sites())
+    except Unauthorized:
+        raise
+    except ApiError as exc:
+        return jsonify({"detail": exc.detail}), exc.status_code
+
+
+@bp.route("/api-proxy/zones")
+@_login_required
+def api_proxy_zones():
+    site_id = request.args.get("site_id", "").strip() or None
+    try:
+        return jsonify(api.get_zones(site_id=site_id))
+    except Unauthorized:
+        raise
+    except ApiError as exc:
+        return jsonify({"detail": exc.detail}), exc.status_code
+
+
+@bp.route("/api-proxy/devices")
+@_login_required
+def api_proxy_devices():
+    zone_id = request.args.get("zone_id", "").strip() or None
+    site_id = request.args.get("site_id", "").strip() or None
+    try:
+        return jsonify(api.get_devices(zone_id=zone_id, site_id=site_id))
+    except Unauthorized:
+        raise
+    except ApiError as exc:
+        return jsonify({"detail": exc.detail}), exc.status_code
+
+
+@bp.route("/overview")
+@_login_required
+def overview():
+    filters = {
+        "q": request.args.get("q", "").strip(),
+        "site_id": request.args.get("site_id", "").strip(),
+        "zone_id": request.args.get("zone_id", "").strip(),
+        "role": request.args.get("role", "").strip(),
+        "ring": request.args.get("ring", "").strip(),
+        "health": request.args.get("health", "").strip(),
+        "last_seen_minutes": request.args.get("last_seen_minutes", "").strip(),
+    }
+
+    sites = []
+    alerts = []
+    deployments = []
+    zones = []
+    devices = []
+    profiles = []
+    overrides = []
+
+    try:
+        sites = api.get_sites()
+    except ApiError as exc:
+        flash(f"Could not load sites: {exc.detail}", "error")
+
+    try:
+        alerts = api.get_alerts()
+    except ApiError:
+        alerts = []
+
+    try:
+        all_deps = api.get_deployments()
+        # Show only active/in-progress deployments
+        deployments = [d for d in all_deps if d.get("status") in ("pending", "in_progress")]
+    except ApiError:
+        deployments = []
+
+    try:
+        zones = api.get_zones()
+    except ApiError:
+        zones = []
+
+    try:
+        devices = api.get_devices()
+    except ApiError:
+        devices = []
+
+    try:
+        profiles = api.get_profiles()
+    except ApiError:
+        profiles = []
+
+    try:
+        overrides = api.get_overrides()
+    except ApiError:
+        overrides = []
+
+    # Compute per-site zone counts so the template doesn't render "?"
+    zone_count_per_site: dict[str, int] = {}
+    for z in zones:
+        sid = z.get("site_id")
+        if sid:
+            zone_count_per_site[sid] = zone_count_per_site.get(sid, 0) + 1
+    sites = [{**s, "zone_count": zone_count_per_site.get(s.get("site_id", s.get("id", "")), 0)} for s in sites]
+
+    n_critical = sum(1 for a in alerts if a.get("labels", {}).get("severity") == "critical")
+    n_warning  = sum(1 for a in alerts if a.get("labels", {}).get("severity") == "warning")
+    n_online   = sum(1 for d in devices if d.get("status") == "online")
+
+    # Build drift map: unique (scope, target_id) → list of overridden component names
+    _drift: dict[str, dict] = {}
+    for ov in overrides:
+        key = f"{ov.get('scope')}:{ov.get('target_id')}"
+        if key not in _drift:
+            _drift[key] = {"scope": ov.get("scope"), "target_id": ov.get("target_id"), "components": []}
+        _drift[key]["components"].append(ov.get("component", "?"))
+    drift_targets = list(_drift.values())
+
+    stats = {
+        "sites":              len(sites),
+        "zones":              len(zones),
+        "devices":            len(devices),
+        "devices_online":     n_online,
+        "alerts_critical":    n_critical,
+        "alerts_warning":     n_warning,
+        "active_deployments": len(deployments),
+        "profiles":           len(profiles),
+        "active_overrides":   len(overrides),
+    }
+
+    zone_map = {z.get("zone_id", ""): z for z in zones}
+    device_roles = sorted({d.get("role") for d in devices if d.get("role")})
+
+    def _parse_ts(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            # handle trailing Z from API timestamps
+            if value.endswith("Z"):
+                value = value[:-1] + "+00:00"
+            dt = datetime.fromisoformat(value)
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except Exception:
+            return None
+
+    def _device_health(d: dict) -> str:
+        status = (d.get("status") or "").lower()
+        if status in ("online", "healthy"):
+            return "online"
+        if status in ("offline", "critical", "error"):
+            return "offline"
+        last_seen = _parse_ts(d.get("last_seen"))
+        if last_seen and (datetime.now(UTC) - last_seen) <= timedelta(minutes=5):
+            return "online"
+        return "offline"
+
+    filtered_devices = list(devices)
+
+    if filters["site_id"]:
+        filtered_devices = [d for d in filtered_devices if d.get("site_id") == filters["site_id"]]
+
+    if filters["zone_id"]:
+        filtered_devices = [d for d in filtered_devices if d.get("zone_id") == filters["zone_id"]]
+
+    if filters["role"]:
+        filtered_devices = [d for d in filtered_devices if (d.get("role") or "") == filters["role"]]
+
+    if filters["ring"].lstrip("-").isdigit():
+        wanted_ring = int(filters["ring"])
+        filtered_devices = [d for d in filtered_devices if d.get("ring") == wanted_ring]
+
+    if filters["health"] in ("online", "offline"):
+        filtered_devices = [d for d in filtered_devices if _device_health(d) == filters["health"]]
+
+    if filters["last_seen_minutes"].isdigit():
+        max_age = int(filters["last_seen_minutes"])
+        cutoff = datetime.now(UTC) - timedelta(minutes=max_age)
+        filtered_devices = [
+            d for d in filtered_devices
+            if (_parse_ts(d.get("last_seen")) and _parse_ts(d.get("last_seen")) >= cutoff)
+        ]
+
+    if filters["q"]:
+        q = filters["q"].lower()
+        filtered_devices = [
+            d for d in filtered_devices
+            if q in (d.get("device_id") or "").lower()
+            or q in (d.get("hostname") or "").lower()
+            or q in (d.get("role") or "").lower()
+        ]
+
+    # Devices registered under the synthetic "control-plane" site (VPS agent)
+    platform_devices = [d for d in devices if d.get("site_id") == "control-plane"]
+
+    return render_template(
+        "overview.html",
+        sites=sites,
+        alerts=alerts,
+        active_deployments=deployments,
+        overrides=overrides,
+        drift_targets=drift_targets,
+        stats=stats,
+        filters=filters,
+        filtered_devices=filtered_devices,
+        device_roles=device_roles,
+        zone_map=zone_map,
+        platform_devices=platform_devices,
+    )
+
+
+@bp.route("/sites/<site_id>")
+@_login_required
+def site_view(site_id: str):
+    try:
+        site = api.get_site(site_id)
+    except ApiError as exc:
+        flash(f"Could not load site: {exc.detail}", "error")
+        return redirect(url_for("inventory.overview"))
+
+    zones = []
+    try:
+        zones = api.get_zones(site_id=site_id)
+    except ApiError as exc:
+        flash(f"Could not load zones: {exc.detail}", "error")
+
+    # Fetch all site devices once (avoids N+1 API calls when a site has many zones)
+    zone_devices: dict[str, list] = {z["zone_id"]: [] for z in zones}
+    try:
+        site_devices = api.get_devices(site_id=site_id)
+        for d in site_devices:
+            zid = d.get("zone_id")
+            if zid:
+                zone_devices.setdefault(zid, []).append(d)
+    except ApiError:
+        # Keep empty per-zone buckets on failure so template rendering stays stable
+        pass
+
+    try:
+        recent_audit = api.get_audit(site_id=site_id, limit=10)
+        events = recent_audit.get("items", recent_audit) if isinstance(recent_audit, dict) else recent_audit
+    except ApiError:
+        events = []
+
+    return render_template(
+        "site.html",
+        site=site,
+        zones=zones,
+        zone_devices=zone_devices,
+        events=events,
+        current_site_id=site.get("site_id", site.get("id", "")),
+    )
+
+
+@bp.route("/zones/<zone_id>")
+@_login_required
+def zone_view(zone_id: str):
+    try:
+        zone = api.get_zone(zone_id)
+    except ApiError as exc:
+        flash(f"Could not load zone: {exc.detail}", "error")
+        return redirect(url_for("inventory.overview"))
+
+    devices = []
+    device_services: dict[str, list] = {}
+    try:
+        devices = api.get_devices(zone_id=zone_id)
+        for d in devices:
+            try:
+                device_services[d["device_id"]] = api.get_device_services(d["device_id"])
+            except ApiError:
+                device_services[d["device_id"]] = []
+    except ApiError as exc:
+        flash(f"Could not load devices: {exc.detail}", "error")
+
+    alerts = []
+    try:
+        all_alerts = api.get_alerts()
+        device_ids = {d["device_id"] for d in devices}
+        alerts = [a for a in all_alerts if a.get("labels", {}).get("device_id") in device_ids]
+    except ApiError:
+        alerts = []
+
+    try:
+        recent_audit = api.get_audit(limit=10)
+        events = recent_audit.get("items", recent_audit) if isinstance(recent_audit, dict) else recent_audit
+    except ApiError:
+        events = []
+
+    site_id = zone.get("site_id")
+    site = None
+    if site_id:
+        try:
+            site = api.get_site(site_id)
+        except ApiError:
+            pass
+
+    profiles = []
+    try:
+        profiles = api.get_profiles()
+    except ApiError:
+        pass
+
+    zone_manifest = None
+    profile_id = zone.get("profile_id")
+    if profile_id:
+        try:
+            profile = api.get_profile(profile_id)
+            zone_manifest = {
+                "profile_name": profile.get("name", profile_id),
+                "profile_id": profile_id,
+                "components": profile.get("baseline_stack", {}).get("components", []),
+            }
+        except ApiError:
+            pass
+
+    return render_template(
+        "zone.html",
+        zone=zone,
+        site=site,
+        devices=devices,
+        device_services=device_services,
+        alerts=alerts,
+        events=events,
+        profiles=profiles,
+        zone_manifest=zone_manifest,
+        device_roles=sorted({d["role"] for d in devices if d.get("role")}),
+        current_zone_id=zone.get("zone_id", zone.get("id", "")),
+        current_site_id=site.get("site_id", site.get("id", "")) if site else "",
+    )
+
+
+@bp.route("/devices/<device_id>")
+@_login_required
+def device_view(device_id: str):
+    try:
+        device = api.get_device(device_id)
+    except ApiError as exc:
+        flash(f"Could not load device: {exc.detail}", "error")
+        return redirect(url_for("inventory.overview"))
+
+    services = []
+    try:
+        services = api.get_device_services(device_id)
+    except ApiError:
+        pass
+
+    manifest = {}
+    try:
+        manifest = api.get_device_manifest(device_id)
+    except ApiError:
+        pass
+
+    zone = None
+    site = None
+    zone_id = device.get("zone_id")
+    if zone_id:
+        try:
+            zone = api.get_zone(zone_id)
+            site_id = zone.get("site_id")
+            if site_id:
+                site = api.get_site(site_id)
+        except ApiError:
+            pass
+
+    return render_template(
+        "device.html",
+        device=device,
+        zone=zone,
+        site=site,
+        services=services,
+        manifest=manifest,
+        current_device_id=device.get("device_id", device.get("id", "")),
+        current_zone_id=zone.get("zone_id", zone.get("id", "")) if zone else "",
+        current_site_id=site.get("site_id", site.get("id", "")) if site else "",
+    )
+
+
+@bp.route("/devices/<device_id>/restart-service", methods=["POST"])
+@_login_required
+def restart_service(device_id: str):
+    service_name = request.form.get("service_name", "")
+    if not service_name:
+        flash("Service name is required.", "error")
+    else:
+        try:
+            api.restart_service(device_id, service_name)
+            flash(f"Restart triggered for {service_name}.", "success")
+        except ApiError as exc:
+            flash(f"Restart failed: {exc.detail}", "error")
+    return redirect(url_for("inventory.device_view", device_id=device_id))
+
+
+@bp.route("/devices/<device_id>/diagnostics", methods=["POST"])
+@_login_required
+def run_diagnostics(device_id: str):
+    try:
+        api.run_diagnostics(device_id)
+        flash("Diagnostics job triggered.", "success")
+    except ApiError as exc:
+        flash(f"Diagnostics failed: {exc.detail}", "error")
+    return redirect(url_for("inventory.device_view", device_id=device_id))
+
+
+# ─── Sites CRUD ──────────────────────────────────────────────────────────────
+
+@bp.route("/sites", methods=["POST"])
+@_login_required
+def create_site_post():
+    payload = {
+        "site_id": request.form.get("site_id", "").strip(),
+        "name": request.form.get("name", "").strip(),
+        "timezone": request.form.get("timezone", "UTC").strip() or "UTC",
+    }
+    if not payload["site_id"] or not payload["name"]:
+        flash("Site ID and name are required.", "error")
+    else:
+        try:
+            api.create_site(payload)
+            flash(f"Site '{payload['name']}' created.", "success")
+        except ApiError as exc:
+            flash(f"Could not create site: {exc.detail}", "error")
+    return redirect(url_for("inventory.overview"))
+
+
+@bp.route("/sites/<site_id>/delete", methods=["POST"])
+@_login_required
+def delete_site_post(site_id: str):
+    try:
+        api.delete_site(site_id)
+        flash(f"Site '{site_id}' deleted.", "success")
+    except ApiError as exc:
+        flash(f"Could not delete site: {exc.detail}", "error")
+    return redirect(url_for("inventory.overview"))
+
+
+# ─── Zones CRUD ──────────────────────────────────────────────────────────────
+
+@bp.route("/zones", methods=["POST"])
+@_login_required
+def create_zone_post():
+    site_id = request.form.get("site_id", "").strip()
+    payload = {
+        "zone_id": request.form.get("zone_id", "").strip(),
+        "name": request.form.get("name", "").strip(),
+        "site_id": site_id,
+        "criticality": request.form.get("criticality", "standard"),
+        "profile_id": request.form.get("profile_id", "").strip() or None,
+    }
+    if not payload["zone_id"] or not payload["name"] or not site_id:
+        flash("Zone ID, name, and site are required.", "error")
+    else:
+        try:
+            api.create_zone(payload)
+            flash(f"Zone '{payload['name']}' created.", "success")
+        except ApiError as exc:
+            flash(f"Could not create zone: {exc.detail}", "error")
+    return redirect(url_for("inventory.site_view", site_id=site_id) if site_id else url_for("inventory.overview"))
+
+
+@bp.route("/zones/<zone_id>/delete", methods=["POST"])
+@_login_required
+def delete_zone_post(zone_id: str):
+    site_id = request.form.get("site_id", "").strip()
+    try:
+        api.delete_zone(zone_id)
+        flash(f"Zone '{zone_id}' deleted.", "success")
+    except ApiError as exc:
+        flash(f"Could not delete zone: {exc.detail}", "error")
+    return redirect(url_for("inventory.site_view", site_id=site_id) if site_id else url_for("inventory.overview"))
+
+
+# ─── Devices CRUD ────────────────────────────────────────────────────────────
+
+@bp.route("/devices", methods=["POST"])
+@_login_required
+def create_device_post():
+    zone_id = request.form.get("zone_id", "").strip()
+    site_id = request.form.get("site_id", "").strip()
+    ring_raw = request.form.get("ring", "").strip()
+    payload = {
+        "device_id": request.form.get("device_id", "").strip(),
+        "hostname": request.form.get("hostname", "").strip(),
+        "role": request.form.get("role", "").strip(),
+        "zone_id": zone_id or None,
+        "site_id": site_id or None,
+        "profile_id": request.form.get("profile_id", "").strip() or None,
+        "ring": int(ring_raw) if ring_raw.isdigit() else None,
+    }
+    if not payload["device_id"] or not payload["hostname"] or not payload["role"]:
+        flash("Device ID, hostname, and role are required.", "error")
+    else:
+        try:
+            result = api.create_device(payload)
+            flash(f"Device '{result['device_id']}' registered — ready for first-boot provisioning.", "success")
+        except ApiError as exc:
+            flash(f"Could not register device: {exc.detail}", "error")
+    if zone_id:
+        return redirect(url_for("inventory.zone_view", zone_id=zone_id))
+    return redirect(url_for("inventory.overview"))
+
+
+@bp.route("/devices/<device_id>/delete", methods=["POST"])
+@_login_required
+def delete_device_post(device_id: str):
+    zone_id = request.form.get("zone_id", "").strip()
+    try:
+        api.delete_device(device_id)
+        flash(f"Device '{device_id}' removed from inventory.", "success")
+    except ApiError as exc:
+        flash(f"Could not delete device: {exc.detail}", "error")
+    if zone_id:
+        return redirect(url_for("inventory.zone_view", zone_id=zone_id))
+    return redirect(url_for("inventory.overview"))

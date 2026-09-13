@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FleetBits — Sign In</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet.css') }}">
+</head>
+<body class="login-page">
+
+<div class="login-box">
+  <div class="login-brand">
+    <img src="{{ url_for('static', filename='img/logo_transparent.png') }}" alt="FleetBits" class="login-brand-logo" />
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="flash flash-{{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('auth.login_submit') }}" class="login-form">
+    <label for="username">Username</label>
+    <input id="username" type="text" name="username" autocomplete="username"
+           autofocus required placeholder="operator username">
+
+    <label for="password">Password</label>
+    <input id="password" type="password" name="password" autocomplete="current-password"
+           required placeholder="••••••••">
+
+    <button type="submit" class="btn btn-primary btn-full">Sign in</button>
+  </form>
+</div>
+
+</body>
+</html>
