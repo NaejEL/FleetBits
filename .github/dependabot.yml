@@ -1,0 +1,29 @@
+# Un seul dépôt, mais quatre composants aux écosystèmes distincts : dependabot
+# ne découvre pas les manifestes tout seul, chaque répertoire est déclaré.
+version: 2
+updates:
+  # Les workflows vivent désormais à la racine, et eux seuls s'exécutent.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "pip"
+    directory: "/api"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "pip"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/agent"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/platform"
+    schedule:
+      interval: "weekly"
