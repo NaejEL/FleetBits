@@ -1,5 +1,15 @@
 apiVersion: 1
 
+# SECURITY GAP — these datasources bypass the API's site isolation.
+# Both URLs below point straight at the engines: Grafana never goes through
+# fleet-api, so the per-site scoping fleet-api enforces does not apply to a
+# dashboard panel or to Grafana Explore. A site-scoped operator can read every
+# site's metrics and logs from here. Loki also runs with auth_enabled: false
+# (docker/loki/loki.yml), so there is no tenant to scope to either.
+# Tracked as SEC-P0-08 (the gap) and SEC-P0-09 (delegating isolation to the
+# engines, which is what would close it) in SECURITY_ROADMAP.md. Do not read
+# the removal of the API's free-form query proxies as closing this path.
+
 datasources:
   - name: Prometheus
     type: prometheus

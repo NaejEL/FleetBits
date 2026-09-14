@@ -59,6 +59,33 @@
   - Done (2026-03-29): All 4 `.pre-commit-config.yaml` files updated with `gitleaks` (v8.18.4), `bandit` (1.7.8, `-r app -ll`), and `ruff --select S` hooks (Python repos); `detect-private-key` was the only security hook before this cycle
   - Next action (owner+team): Each developer runs `pre-commit install` in every repo they contribute to; add to new-hire onboarding
 
+- `SEC-P0-08` — **Grafana queries Prometheus and Loki directly, bypassing API site isolation**
+  - State: ⬜ **OPEN** — not mitigated, not scheduled
+  - Problem: `platform/docker/grafana/provisioning/datasources/datasources.yml` points its datasources at `http://prometheus:9090` and `http://loki:3100`. The six dashboards in `platform/docker/grafana/dashboards/`, and any operator using Grafana Explore, therefore send arbitrary PromQL/LogQL to the engines without passing through `api/` — so the site isolation the API enforces does not apply. A site-scoped operator authenticated through the `grafana-verify` bridge can read the whole fleet.
+  - Scope note: this is the half of VIB-01 that the `SPEC-cloisonnement-telemetrie` cycle did **not** close. That cycle removed the API's free-form query proxies; it left this path untouched, by explicit decision.
+  - Next action (owner): decide the Loki multi-tenancy model (`platform/docker/loki/loki.yml:6` has `auth_enabled: false`) and the Grafana organisation/team policy, then close through `SEC-P0-09`.
+  - Evidence: `platform/docker/grafana/provisioning/datasources/datasources.yml`, `platform/docker/loki/loki.yml`
+
+- `SEC-P0-09` — **Delegate site isolation to the data engines**
+  - State: ⬜ **OPEN** — design work not started
+  - Problem: site isolation is enforced only where a caller goes through `api/`. Any other client of Prometheus or Loki is unrestricted (`SEC-P0-08` is the one that exists today). Enforcing isolation at the engines is the only variant that holds regardless of the client.
+  - Shape of the work: Loki multi-tenancy (`X-Scope-OrgID` per site, `auth_enabled: true`), an equivalent enforcement point in front of Prometheus — which has no native tenancy — and a Grafana organisation policy binding an operator's session to its site.
+  - Not a regression of the current cycle: the API-side hole is closed (no client expression is accepted); this entry is the remaining, larger half.
+
+- `SEC-P0-10` — **A site-scoped `admin` can remove its own `site_scope`**
+  - State: ⬜ **OPEN** — known, documented, not closed
+  - Problem: since the `SPEC-cloisonnement-telemetrie` cycle, an `admin` token carrying a `site_scope` is confined to that site on the ten fleet routers that ask this question (`api/app/routers/_scope.py`). User administration is not one of them: `api/app/routers/auth.py` gates `PATCH /api/v1/auth/users/{user_id}` on role alone, so such an admin can clear its own `site_scope` and log back in fleet-wide. Confirmed by direct observation.
+  - Consequence: scoping an admin is an operational guard rail against mistakes on the fleet routers, **not** a privilege reduction. `api/README.md` states this in those terms; no document may claim a scoped admin is contained.
+  - Next action (owner): decide whether `auth.py` should refuse a self-directed `role`/`site_scope` change, or whether the scoped-admin shape should simply be forbidden at issuance.
+  - Evidence: `api/app/routers/auth.py:421-436`, `api/app/routers/_scope.py`
+
+- `SEC-P0-11` — **Two device routes read or write fleet-wide behind a role gate alone**
+  - State: ⬜ **OPEN** — pre-existing, surfaced by the `SPEC-cloisonnement-telemetrie` verification pass
+  - Problem: the shared predicate of `api/app/routers/_scope.py` is not applied to `POST /api/v1/devices/bulk` (`api/app/routers/devices.py:213`) nor to `GET /api/v1/packages/repo-authorized-keys` (`api/app/routers/packages.py:544`). Observed: a token scoped to `site-a` creates a device carrying `site_id="site-b"` through the bulk route and receives 201, and a scope-less `operator` — refused by `POST /devices` and by every listing of the same router — also receives 201. The key-listing route returns every site's devices to a site-scoped caller.
+  - Consequence: one creation path and one read path of routers otherwise covered by the fail-closed rule sit outside it, so the rule is not true of the whole API. The bulk route is already tracked as `VIB-04` in `AUDIT-vibecode.md`; the key-listing route was not tracked anywhere before this entry.
+  - Next action (owner): apply `require_site_scope` plus the device scope filter to both routes, with a regression test per route, in the `VIB-04` cycle.
+  - Evidence: `api/app/routers/devices.py:213`, `api/app/routers/packages.py:544`
+
 - `SEC-P0-07` — **Governance gates + JWT revocation completeness**
   - State: 🔧 **Code complete — activation requires branch protection** (see SEC-P0-03)
   - Done (2026-03-29): `POST /auth/logout` endpoint added — revokes active JWT via `jti` immediately; provision tokens now include `jti` UUID claim enabling individual revocation; `CODEOWNERS` and `pr-security-checklist.yml` workflows exist in all 4 repos
@@ -71,8 +98,8 @@
 
 | Code | Category | Status |
 |------|----------|--------|
-| S0.1–S0.3 | Authorization scope checks | ✅ All router scopes enforced + tested |
-| S0.4 | Input validation (PromQL/LogQL sanitized) | ✅ Complete |
+| S0.1–S0.3 | Authorization scope checks | 🟡 Partial — the shared predicate is in place and enforced on the ten routers that ask the question, but two routes still read or write fleet-wide behind a role gate alone: `POST /api/v1/devices/bulk` (tracked as `VIB-04`) and `GET /api/v1/packages/repo-authorized-keys` (`api/app/routers/packages.py:544`), both of which return or accept another site's devices for a site-scoped caller. Since the `SPEC-cloisonnement-telemetrie` cycle, through a single shared predicate (`api/app/routers/_scope.py`) rather than eleven per-router copies: `grep 'role != "admin"' api/app/routers/` returns a single line, the comment inside that predicate recording what it replaced. A token carrying a `site_scope` is confined by it whatever its role; a token of a scopable role (`operator`, `technician`, or any unrecognised role) carrying none is refused. `admin`, `ci_bot` and `viewer` are fleet-wide by nature and keep their own controls (role gates, the `ci_bot` ring-0 restriction). Not a containment boundary for a scoped `admin` — see `SEC-P0-10`. Two routes remain out of the rule: `VIB-04` and `SEC-P0-11` |
+| S0.4 | Input validation (PromQL/LogQL sanitized) | ⬜ **Open** — the API no longer accepts a client-supplied expression at all (the four free-form telemetry query proxies were removed, VIB-01); every engine expression is built server-side from validated label values. Isolation is still not enforced at the engines: Grafana queries them directly — see `SEC-P0-08`, `SEC-P0-09` |
 | S0.5 | Provision token scope enforcement | ✅ Complete |
 | S0.6–S0.7 | Secrets & fail-closed defaults | ✅ Complete |
 | S0.8 | Package repo device-key auth + ACL | ✅ Complete |
@@ -251,7 +278,7 @@ Per-device topic namespace isolates devices from each other:
 | JWT forgery (weak secret) | Spoofing | High | Mitigated — strong random `JWT_SECRET` required in secrets.env |
 | JWT missing `site_scope` claim enforcement | Elevation of Privilege | High | Mitigated — every DB query filters by site_scope claim |
 | SQL injection via ORM | Tampering | High | Mitigated — SQLAlchemy parameterised queries only |
-| PromQL/LogQL injection via observability proxy | Tampering | Medium | Partial — label values validated at API layer; full sanitisation pending |
+| PromQL/LogQL injection via observability proxy | Tampering | Medium | Partial — no client expression is accepted any more; the API builds every expression server-side from validated label values. Not closed: Grafana queries Prometheus and Loki directly, outside the API — `SEC-P0-08`, `SEC-P0-09` |
 | Audit log tampering | Repudiation | Medium | Partial — audit_event is append-only in code; no DB-level write lock yet |
 | Deployment trigger race (no idempotency) | Tampering | Medium | Mitigated — `Idempotency-Key` header required on deployment creation |
 | Out-of-scope resource enumeration | Information Disclosure | Medium | Mitigated — 404 returned for out-of-scope resources (not 403) |
