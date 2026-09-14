@@ -105,6 +105,24 @@ If enforcement is not active, explicitly call it out as unresolved risk.
 - update tests with behavior changes
 - never mark work complete without validation evidence
 
+### Language
+
+**Everything that outlives a work cycle is written in English.** No exception:
+
+- source code, comments, docstrings, test names, log and error messages
+- commit messages, branch names, pull request titles and bodies
+- the GitHub repository description and topics
+- README and every document under `docs/`
+- **ADRs** (§9) — they are kept for the life of the project
+
+The only tolerated exception is the working artefacts produced by the software
+factory with the maintainer, which are written in the maintainer's language and
+are expected to be deleted once the project is communicated publicly:
+`specs/` and `AUDIT-*.md`. Nothing else.
+
+Do not follow the language of the conversation you are having. Follow the
+language of the repository you are writing into.
+
 ---
 
 ## 9) Architecture Decision Records (why we chose each technology)

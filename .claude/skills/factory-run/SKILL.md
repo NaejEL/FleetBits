@@ -1,71 +1,71 @@
 ---
 name: factory-run
-description: Lance un cycle de l'usine logicielle (Planner → gate humaine sur la spec → Builder → Verifier avec boucle de correction) sur un besoin ou une spec approuvée.
+description: Runs one cycle of the software factory (Planner → human gate on the spec → Builder → Verifier with a correction loop) on a requirement or an approved spec.
 disable-model-invocation: true
-argument-hint: "<besoin | chemin d'une spec approuvée>"
+argument-hint: "<requirement | path of an approved spec>"
 ---
 
-Déroule un cycle complet de l'usine logicielle FleetBits sur `$ARGUMENTS`. Suis les étapes dans l'ordre, sans en sauter aucune.
+Run a complete cycle of the FleetBits software factory on `$ARGUMENTS`. Follow the steps in order, without skipping any.
 
-## Contexte permanent du dépôt
+## Permanent repository context
 
-`/home/naej/repos/FleetBits` est **un dépôt git unique** — le monorepo FleetBits. Ses quatre composants sont des dossiers de premier niveau : `api/` (Python/FastAPI, Alembic, pytest), `ui/` (Python/Flask), `agent/` (shell, systemd, Alloy/Vector), `platform/` (docker-compose, Ansible, scripts). Les documents transverses (`README.md`, `GUIDELINES.md`, `FEATURE_ROADMAP.md`, `SECURITY_ROADMAP.md`, `AUDIT-vibecode.md`), l'usine (`.claude/`, `ci/`), les specs (`specs/`) et les workflows GitHub (`.github/workflows/`) vivent à la racine.
+`/home/naej/repos/FleetBits` is **a single git repository** — the FleetBits monorepo. Its four components are top-level directories: `api/` (Python/FastAPI, Alembic, pytest), `ui/` (Python/Flask), `agent/` (shell, systemd, Alloy/Vector), `platform/` (docker-compose, Ansible, scripts). The cross-cutting documents (`README.md`, `GUIDELINES.md`, `FEATURE_ROADMAP.md`, `SECURITY_ROADMAP.md`, `AUDIT-vibecode.md`), the factory (`.claude/`, `ci/`), the specs (`specs/`) and the GitHub workflows (`.github/workflows/`) live at the root.
 
-Un seul arbre de travail, un seul `git status`, un seul historique : plus de `git -C <dépôt>`, plus de branche à synchroniser d'un dépôt à l'autre. Un cycle qui touche à la fois l'API et l'agent est un changement ordinaire, testable en une seule fois. Les journaux `factory-logs/` sont ignorés par git.
+A single working tree, a single `git status`, a single history: no more `git -C <repository>`, no more branch to synchronise from one repository to another. A cycle that touches both the API and the agent is an ordinary change, testable in one go. The `factory-logs/` logs are ignored by git.
 
-## 1. Entrée
+## 1. Input
 
-Si `$ARGUMENTS` est le chemin d'un fichier existant sous `specs/` dont la ligne de statut en tête vaut exactement `Statut : APPROUVEE`, **passer directement à l'étape 3** en prenant ce fichier comme spec approuvée.
+If `$ARGUMENTS` is the path of an existing file under `specs/` whose status line at the top is exactly `Statut : APPROUVEE`, **go straight to step 3**, taking that file as the approved spec.
 
-Sinon, traiter `$ARGUMENTS` comme un **besoin** exprimé par l'utilisateur, et continuer à l'étape 2.
+Otherwise, treat `$ARGUMENTS` as a **requirement** expressed by the user, and continue at step 2.
 
-## 2. Phase Plan — gate humaine obligatoire
+## 2. Plan phase — mandatory human gate
 
-1. Lancer le sous-agent `factory-planner` (outil `Agent`, `subagent_type: "factory-planner"`) avec le besoin `$ARGUMENTS` en entrée. Si le besoin cite un finding de `AUDIT-vibecode.md` ou un document transverse, le lui signaler explicitement.
-2. À son retour, lire la section *Questions ouvertes* de son brouillon. Si elle contient au moins une question, les poser à l'utilisateur avec `AskUserQuestion`, en regroupant autant de questions que possible dans un même appel et en proposant pour chacune les options identifiées par le Planner.
-3. Intégrer les réponses au brouillon : chaque réponse fait disparaître la question ouverte correspondante et devient, selon le cas, un critère d'acceptation, une ligne de *Hors-périmètre* ou une contrainte de *Contexte*. La section *Questions ouvertes* de la spec écrite doit se réduire à « Aucune ».
-4. Écrire `specs/SPEC-<slug-du-besoin>.md` — slug court, en minuscules, mots séparés par des tirets, dérivé du besoin (ex. `specs/SPEC-contrat-identite-appareil.md`). Le fichier commence par le titre, puis, en deuxième ligne non vide, exactement :
+1. Launch the `factory-planner` sub-agent (`Agent` tool, `subagent_type: "factory-planner"`) with the requirement `$ARGUMENTS` as input. If the requirement cites a finding from `AUDIT-vibecode.md` or a cross-cutting document, point it out explicitly.
+2. When it returns, read the *Questions ouvertes* section of its draft. If it contains at least one question, put them to the user with `AskUserQuestion`, grouping as many questions as possible in a single call and offering, for each of them, the options identified by the Planner.
+3. Fold the answers into the draft: each answer makes the corresponding open question disappear and becomes, depending on the case, an acceptance criterion, a line in *Hors-périmètre* or a constraint in *Contexte*. The *Questions ouvertes* section of the written spec must be reduced to "Aucune".
+4. Write `specs/SPEC-<slug-of-the-requirement>.md` — a short slug, lowercase, words separated by hyphens, derived from the requirement (e.g. `specs/SPEC-contrat-identite-appareil.md`). The file begins with the title, then, on the second non-empty line, exactly:
 
    ```
    Statut : PROPOSEE
    ```
 
-   suivent les sections *Contexte*, *Périmètre*, *Critères d'acceptation*, *Hors-périmètre*, *Risques*, *Questions ouvertes*.
-5. Présenter la spec à l'utilisateur et **demander son approbation explicite**. En cas d'approbation, remplacer la ligne de statut par `Statut : APPROUVEE`. En cas de réserve, itérer sur la spec (corriger, re-présenter) et ne passer au statut approuvé qu'après accord franc.
-6. **Si aucune interaction n'est possible (exécution headless, `claude -p`), s'arrêter immédiatement en erreur explicite** : « Un cycle CI exige le chemin d'une spec déjà approuvée sous `specs/` portant `Statut : APPROUVEE`. Aucune spec ne sera rédigée sans gate humaine. » Ne rien écrire, ne rien construire.
+   followed by the sections *Contexte*, *Périmètre*, *Critères d'acceptation*, *Hors-périmètre*, *Risques*, *Questions ouvertes* (the spec's section headings stay in French).
+5. Present the spec to the user and **ask for explicit approval**. On approval, replace the status line with `Statut : APPROUVEE`. If there are reservations, iterate on the spec (fix, re-present) and only move to the approved status after a clear agreement.
+6. **If no interaction is possible (headless execution, `claude -p`), stop immediately with an explicit error**: "A CI cycle requires the path of an already-approved spec under `specs/` carrying `Statut : APPROUVEE`. No spec will be written without a human gate." Write nothing, build nothing.
 
-**Ne jamais construire sans spec approuvée.** L'utilisateur est le Product Owner : aucune exigence n'est décidée à sa place.
+**Never build without an approved spec.** The user is the Product Owner: no requirement is decided in their place.
 
-## 3. Phase Build
+## 3. Build phase
 
-Lancer le sous-agent `factory-builder` (outil `Agent`, `subagent_type: "factory-builder"`, **contexte frais**) en lui passant :
+Launch the `factory-builder` sub-agent (`Agent` tool, `subagent_type: "factory-builder"`, **fresh context**), passing it:
 
-- le chemin absolu de la spec approuvée ;
-- la liste des composants touchés (`api/`, `ui/`, `agent/`, `platform/`), telle que la spec les nomme ;
-- la consigne d'exécuter build et tests de chaque composant touché et de ne rendre la main que s'ils passent.
+- the absolute path of the approved spec;
+- the list of components touched (`api/`, `ui/`, `agent/`, `platform/`), as the spec names them;
+- the instruction to run the build and the tests of each component touched and to hand back only if they pass.
 
-## 4. Phase Verify — boucle de correction, 3 itérations maximum
+## 4. Verify phase — correction loop, 3 iterations maximum
 
-Tenir un compteur d'itérations, initialisé à 1.
+Keep an iteration counter, initialised to 1.
 
-1. Lancer un sous-agent `factory-verifier` (`subagent_type: "factory-verifier"`, **contexte vierge, indépendant de celui du Builder** — un nouvel agent à chaque itération, jamais une reprise du précédent) avec le chemin absolu de la spec. Récupérer le bloc JSON en fin de sa réponse.
-2. Si `verdict` vaut `APPROVED` **et** `tests_passed` vaut `true` : sortir de la boucle, le cycle est un succès. Aller à l'étape 5.
-3. Sinon, relancer `factory-builder` (contexte frais) avec le chemin de la spec **et la liste complète des `issues` du Verifier** — `file`, `severity`, `description` de chacune, sans en omettre ni en résumer une — et la consigne de corriger chaque issue sans régresser sur les critères déjà satisfaits. Incrémenter le compteur, puis reprendre à l'étape 1 avec un **nouveau** Verifier.
-4. Après la **3e** itération non approuvée, **échouer explicitement** : publier les issues restantes, le nombre d'itérations consommées et l'état de l'arbre de travail. **Ne jamais approuver par épuisement** ni déclarer le cycle réussi parce que les issues restantes semblent mineures.
-5. **Un Verifier muet n'est pas un Verifier satisfait.** Si le Builder ou le Verifier meurt (erreur d'API, connexion coupée, agent interrompu) ou rend une sortie inexploitable au lieu de son bloc JSON, le relancer **une fois à l'identique**. Si le second essai échoue lui aussi, **échouer explicitement** en le disant : « Le vérificateur n'a rendu aucun verdict exploitable après deux tentatives ; le code produit n'est pas vérifié. » Ne jamais traiter l'absence de verdict comme une approbation, ne jamais consommer une itération du compteur au profit d'un agent mort, ne jamais passer à la suite sur un verdict absent. Un cycle qui livre du code non vérifié parce que son vérificateur est tombé est pire qu'un cycle qui échoue.
+1. Launch a `factory-verifier` sub-agent (`subagent_type: "factory-verifier"`, **blank context, independent of the Builder's** — a new agent at each iteration, never a resumption of the previous one) with the absolute path of the spec. Retrieve the JSON block at the end of its response.
+2. If `verdict` is `APPROVED` **and** `tests_passed` is `true`: exit the loop, the cycle is a success. Go to step 5.
+3. Otherwise, relaunch `factory-builder` (fresh context) with the path of the spec **and the complete list of the Verifier's `issues`** — `file`, `severity`, `description` of each one, omitting none and summarising none — and the instruction to fix each issue without regressing on the criteria already satisfied. Increment the counter, then resume at step 1 with a **new** Verifier.
+4. After the **3rd** unapproved iteration, **fail explicitly**: publish the remaining issues, the number of iterations consumed and the state of the working tree. **Never approve out of exhaustion**, nor declare the cycle successful because the remaining issues seem minor.
+5. **A silent Verifier is not a satisfied Verifier.** If the Builder or the Verifier dies (API error, dropped connection, interrupted agent) or returns unusable output instead of its JSON block, relaunch it **once, identically**. If the second attempt also fails, **fail explicitly**, saying so: "The verifier returned no usable verdict after two attempts; the code produced is not verified." Never treat the absence of a verdict as an approval, never consume an iteration of the counter for the benefit of a dead agent, never move on with a missing verdict. A cycle that ships unverified code because its verifier fell over is worse than a cycle that fails.
 
-## 5. Rapport final
+## 5. Final report
 
-Produire un rapport structuré contenant :
+Produce a structured report containing:
 
-- **Fichiers modifiés**, obtenus par un seul appel :
+- **Modified files**, obtained by a single call:
 
   ```bash
   git -C /home/naej/repos/FleetBits status --short
   ```
 
-  Les regrouper par composant (`api/`, `ui/`, `agent/`, `platform/`, racine) dans le rapport.
+  Group them by component (`api/`, `ui/`, `agent/`, `platform/`, root) in the report.
 
-- **Résultat des tests** : pour chaque composant touché, la commande exécutée et son exit code (`api/` : `./.venv/bin/python -m pytest` ; `ui/` : idem si un `tests/` existe ; `agent/` : `./scripts/run-tests.sh`, soit `shellcheck` + `bats` ; `platform/` : `./scripts/run-tests.sh`, soit `docker compose config -q` + `ansible-playbook --syntax-check` + `ansible-lint` + `pytest` + `shellcheck`).
-- **Verdict** final du Verifier et nombre d'itérations consommées.
-- **Prochaine action suggérée** : revue du diff par l'utilisateur (`git -C /home/naej/repos/FleetBits diff`), puis commit et branche à sa main. **Ne jamais commiter à sa place** — le découpage des commits lui appartient.
+- **Test results**: for each component touched, the command run and its exit code (`api/`: `./.venv/bin/python -m pytest`; `ui/`: the same if a `tests/` exists; `agent/`: `./scripts/run-tests.sh`, i.e. `shellcheck` + `bats`; `platform/`: `./scripts/run-tests.sh`, i.e. `docker compose config -q` + `ansible-playbook --syntax-check` + `ansible-lint` + `pytest` + `shellcheck`).
+- **Verdict** — the Verifier's final one — and the number of iterations consumed.
+- **Suggested next action**: review of the diff by the user (`git -C /home/naej/repos/FleetBits diff`), then commit and branch at their discretion. **Never commit in their place** — the splitting of commits belongs to them.

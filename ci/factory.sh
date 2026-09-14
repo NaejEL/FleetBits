@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# ci/factory.sh — exécution headless d'un cycle de l'usine logicielle FleetBits.
+# ci/factory.sh — headless execution of one FleetBits software factory cycle.
 #
-# Usage :
-#   ./ci/factory.sh specs/SPEC-mon-besoin.md
-#   ./ci/factory.sh --yolo specs/SPEC-mon-besoin.md
+# Usage:
+#   ./ci/factory.sh specs/SPEC-my-requirement.md
+#   ./ci/factory.sh --yolo specs/SPEC-my-requirement.md
 #
-# La spec doit exister et porter « Statut : APPROUVEE » : un cycle headless ne
-# rédige jamais de spec, la gate humaine de /factory-run n'est pas contournable.
+# The spec must exist and carry "Statut : APPROUVEE": a headless cycle never
+# writes a spec, the human gate of /factory-run cannot be bypassed.
 #
-# Sortie JSON : factory-logs/factory-<horodatage>.json
-# Exit code   : celui de `claude`.
+# JSON output : factory-logs/factory-<timestamp>.json
+# Exit code   : that of `claude`.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -18,11 +18,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage : ci/factory.sh [--yolo] <chemin-de-la-spec-approuvee>
+Usage: ci/factory.sh [--yolo] <path-of-the-approved-spec>
 
-  <chemin-de-la-spec-approuvee>  Fichier sous specs/ portant « Statut : APPROUVEE ».
-  --yolo                         Remplace la liste blanche d'outils par
-                                 --dangerously-skip-permissions.
+  <path-of-the-approved-spec>  File under specs/ carrying "Statut : APPROUVEE".
+  --yolo                       Replaces the tool allowlist with
+                               --dangerously-skip-permissions.
 EOF
 }
 
@@ -40,13 +40,13 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     -*)
-      echo "ci/factory.sh : option inconnue « $1 »." >&2
+      echo "ci/factory.sh: unknown option \"$1\"." >&2
       usage
       exit 2
       ;;
     *)
       if [ -n "$SPEC" ]; then
-        echo "ci/factory.sh : un seul chemin de spec est attendu (déjà reçu « $SPEC »)." >&2
+        echo "ci/factory.sh: a single spec path is expected (already received \"$SPEC\")." >&2
         exit 2
       fi
       SPEC="$1"
@@ -56,7 +56,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SPEC" ]; then
-  echo "ci/factory.sh : le chemin d'une spec approuvée est obligatoire." >&2
+  echo "ci/factory.sh: the path of an approved spec is mandatory." >&2
   usage
   exit 2
 fi
@@ -67,26 +67,26 @@ case "$SPEC" in
 esac
 
 if [ ! -f "$SPEC_ABS" ]; then
-  echo "ci/factory.sh : spec introuvable : $SPEC_ABS" >&2
+  echo "ci/factory.sh: spec not found: $SPEC_ABS" >&2
   exit 2
 fi
 
 if ! grep -q 'Statut : APPROUVEE' "$SPEC_ABS"; then
-  echo "ci/factory.sh : « $SPEC_ABS » ne porte pas « Statut : APPROUVEE »." >&2
-  echo "                Un cycle CI exige une spec déjà approuvée par l'utilisateur." >&2
-  echo "                Lancer d'abord, en session interactive : /factory-run \"<votre besoin>\"" >&2
+  echo "ci/factory.sh: \"$SPEC_ABS\" does not carry \"Statut : APPROUVEE\"." >&2
+  echo "               A CI cycle requires a spec already approved by the user." >&2
+  echo "               Run first, in an interactive session: /factory-run \"<your requirement>\"" >&2
   exit 2
 fi
 
 if ! command -v claude >/dev/null 2>&1; then
-  echo "ci/factory.sh : la commande « claude » est introuvable dans le PATH." >&2
+  echo "ci/factory.sh: the \"claude\" command was not found in the PATH." >&2
   exit 127
 fi
 
-# Liste blanche d'outils : outils de base de l'usine, git sur le monorepo,
-# et les commandes réellement utilisées par la stack FleetBits
-# (python3/venv pour api/ et ui/, docker pour shellcheck, bats, ansible-lint,
-# compose, et bash -n pour les scripts de -agent et -platform).
+# Tool allowlist: the factory's basic tools, git on the monorepo,
+# and the commands actually used by the FleetBits stack
+# (python3/venv for api/ and ui/, docker for shellcheck, bats, ansible-lint,
+# compose, and bash -n for the -agent and -platform scripts).
 ALLOWED_TOOLS='Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python3 *),Bash(pip *),Bash(pytest *),Bash(ruff *),Bash(bandit *),Bash(alembic *),Bash(docker *),Bash(bash -n *),Bash(shellcheck *),Bash(ansible-lint *),Bash(ansible-playbook *)'
 
 LOG_DIR="$ROOT_DIR/factory-logs"
@@ -106,14 +106,14 @@ else
   CLAUDE_ARGS+=(--permission-mode acceptEdits --allowedTools "$ALLOWED_TOOLS")
 fi
 
-echo "ci/factory.sh : spec      = $SPEC_ABS"
-echo "ci/factory.sh : journal   = $LOG_FILE"
-echo "ci/factory.sh : mode      = $([ "$YOLO" -eq 1 ] && echo 'YOLO (permissions ignorées)' || echo 'acceptEdits + liste blanche')"
+echo "ci/factory.sh: spec      = $SPEC_ABS"
+echo "ci/factory.sh: log       = $LOG_FILE"
+echo "ci/factory.sh: mode      = $([ "$YOLO" -eq 1 ] && echo 'YOLO (permissions ignored)' || echo 'acceptEdits + allowlist')"
 
 set +e
 (cd "$ROOT_DIR" && claude "${CLAUDE_ARGS[@]}") | tee "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
-echo "ci/factory.sh : exit code claude = $EXIT_CODE"
+echo "ci/factory.sh: claude exit code = $EXIT_CODE"
 exit "$EXIT_CODE"

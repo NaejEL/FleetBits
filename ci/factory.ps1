@@ -1,20 +1,20 @@
 <#
 .SYNOPSIS
-    Exécution headless d'un cycle de l'usine logicielle FleetBits.
+    Headless execution of one FleetBits software factory cycle.
 
 .DESCRIPTION
-    Équivalent PowerShell de ci/factory.sh.
-    La spec doit exister et porter « Statut : APPROUVEE » : un cycle headless ne
-    rédige jamais de spec, la gate humaine de /factory-run n'est pas contournable.
+    PowerShell equivalent of ci/factory.sh.
+    The spec must exist and carry "Statut : APPROUVEE": a headless cycle never
+    writes a spec, the human gate of /factory-run cannot be bypassed.
 
-    Sortie JSON : factory-logs/factory-<horodatage>.json
-    Exit code   : celui de `claude`.
-
-.EXAMPLE
-    pwsh -File ci/factory.ps1 specs/SPEC-mon-besoin.md
+    JSON output : factory-logs/factory-<timestamp>.json
+    Exit code   : that of `claude`.
 
 .EXAMPLE
-    pwsh -File ci/factory.ps1 specs/SPEC-mon-besoin.md -Yolo
+    pwsh -File ci/factory.ps1 specs/SPEC-my-requirement.md
+
+.EXAMPLE
+    pwsh -File ci/factory.ps1 specs/SPEC-my-requirement.md -Yolo
 #>
 
 [CmdletBinding()]
@@ -36,26 +36,26 @@ if ([System.IO.Path]::IsPathRooted($Spec)) {
 }
 
 if (-not (Test-Path -LiteralPath $SpecAbs -PathType Leaf)) {
-    Write-Error "ci/factory.ps1 : spec introuvable : $SpecAbs"
+    Write-Error "ci/factory.ps1: spec not found: $SpecAbs"
     exit 2
 }
 
 if (-not (Select-String -LiteralPath $SpecAbs -Pattern 'Statut : APPROUVEE' -SimpleMatch -Quiet)) {
-    Write-Host "ci/factory.ps1 : « $SpecAbs » ne porte pas « Statut : APPROUVEE »." -ForegroundColor Red
-    Write-Host "                 Un cycle CI exige une spec deja approuvee par l'utilisateur."
-    Write-Host "                 Lancer d'abord, en session interactive : /factory-run `"<votre besoin>`""
+    Write-Host "ci/factory.ps1: `"$SpecAbs`" does not carry `"Statut : APPROUVEE`"." -ForegroundColor Red
+    Write-Host "                A CI cycle requires a spec already approved by the user."
+    Write-Host "                Run first, in an interactive session: /factory-run `"<your requirement>`""
     exit 2
 }
 
 if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-    Write-Error "ci/factory.ps1 : la commande « claude » est introuvable dans le PATH."
+    Write-Error "ci/factory.ps1: the `"claude`" command was not found in the PATH."
     exit 127
 }
 
-# Liste blanche d'outils : outils de base de l'usine, git sur le monorepo,
-# et les commandes réellement utilisées par la stack FleetBits
-# (python3/venv pour api/ et ui/, docker pour shellcheck, bats, ansible-lint,
-# compose, et bash -n pour les scripts de -agent et -platform).
+# Tool allowlist: the factory's basic tools, git on the monorepo,
+# and the commands actually used by the FleetBits stack
+# (python3/venv for api/ and ui/, docker for shellcheck, bats, ansible-lint,
+# compose, and bash -n for the -agent and -platform scripts).
 $AllowedTools = 'Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python3 *),Bash(pip *),Bash(pytest *),Bash(ruff *),Bash(bandit *),Bash(alembic *),Bash(docker *),Bash(bash -n *),Bash(shellcheck *),Bash(ansible-lint *),Bash(ansible-playbook *)'
 
 $LogDir = Join-Path $RootDir 'factory-logs'
@@ -73,15 +73,15 @@ $ClaudeArgs = @(
 
 if ($Yolo) {
     $ClaudeArgs += '--dangerously-skip-permissions'
-    $ModeLabel = 'YOLO (permissions ignorees)'
+    $ModeLabel = 'YOLO (permissions ignored)'
 } else {
     $ClaudeArgs += @('--permission-mode', 'acceptEdits', '--allowedTools', $AllowedTools)
-    $ModeLabel = 'acceptEdits + liste blanche'
+    $ModeLabel = 'acceptEdits + allowlist'
 }
 
-Write-Host "ci/factory.ps1 : spec      = $SpecAbs"
-Write-Host "ci/factory.ps1 : journal   = $LogFile"
-Write-Host "ci/factory.ps1 : mode      = $ModeLabel"
+Write-Host "ci/factory.ps1: spec      = $SpecAbs"
+Write-Host "ci/factory.ps1: log       = $LogFile"
+Write-Host "ci/factory.ps1: mode      = $ModeLabel"
 
 Push-Location $RootDir
 try {
@@ -91,5 +91,5 @@ try {
     Pop-Location
 }
 
-Write-Host "ci/factory.ps1 : exit code claude = $ExitCode"
+Write-Host "ci/factory.ps1: claude exit code = $ExitCode"
 exit $ExitCode

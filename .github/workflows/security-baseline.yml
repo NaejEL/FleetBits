@@ -1,10 +1,10 @@
 name: Security Baseline
 
-# Fusion des quatre security-baseline.yml des anciens dépôts.
-# Les trois jobs transverses (dependency-review, secret-scan, filesystem-vuln-scan)
-# étaient strictement identiques dans les quatre : ils couvrent désormais tout
-# l'arbre en une seule passe. Les deux jobs Python restent distincts parce que
-# leurs cibles bandit et leurs requirements.txt diffèrent.
+# Merged from the four security-baseline.yml files of the former repositories.
+# The three cross-cutting jobs (dependency-review, secret-scan,
+# filesystem-vuln-scan) were byte-identical in all four: they now cover the whole
+# tree in a single pass. The two Python jobs stay separate because their bandit
+# targets and their requirements.txt differ.
 
 on:
   pull_request:
