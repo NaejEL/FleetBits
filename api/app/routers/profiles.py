@@ -8,15 +8,12 @@ from app.dependencies import get_current_user, require_roles
 from app.models.device import Device
 from app.models.profile import Profile
 from app.models.zone import Zone
+from app.routers._scope import require_site_scope
 from app.schemas.profile import ProfileCreate, ProfileRead, ProfileUpdate
 from app.services.audit import write_audit_event
 from app.services.token import TokenPayload
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
-
-
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
 
 
 async def _site_profile_ids(db: AsyncSession, site_id: str) -> set[str]:
@@ -34,11 +31,12 @@ async def list_profiles(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
-    if not _is_site_scoped_user(user):
+    scope = require_site_scope(user)
+    if scope is None:
         result = await db.execute(select(Profile))
         return result.scalars().all()
 
-    profile_ids = await _site_profile_ids(db, user.site_scope)
+    profile_ids = await _site_profile_ids(db, scope)
     if not profile_ids:
         return []
     result = await db.execute(select(Profile).where(Profile.profile_id.in_(profile_ids)))
@@ -51,11 +49,12 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
+    scope = require_site_scope(user)
     profile = await db.get(Profile, profile_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Profile not found")
-    if _is_site_scoped_user(user):
-        allowed_ids = await _site_profile_ids(db, user.site_scope)
+    if scope is not None:
+        allowed_ids = await _site_profile_ids(db, scope)
         if profile.profile_id not in allowed_ids:
             raise HTTPException(status_code=404, detail="Profile not found")
     return profile
@@ -68,7 +67,7 @@ async def create_profile(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user):
+    if require_site_scope(user) is not None:
         raise HTTPException(status_code=403, detail="Access denied")
 
     profile = Profile(**body.model_dump())
@@ -96,7 +95,7 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user):
+    if require_site_scope(user) is not None:
         raise HTTPException(status_code=403, detail="Access denied")
 
     profile = await db.get(Profile, profile_id)
@@ -123,7 +122,7 @@ async def delete_profile(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user):
+    if require_site_scope(user) is not None:
         raise HTTPException(status_code=403, detail="Access denied")
 
     profile = await db.get(Profile, profile_id)

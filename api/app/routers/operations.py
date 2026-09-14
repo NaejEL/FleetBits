@@ -11,6 +11,7 @@ from app.db import get_db
 from app.dependencies import require_roles
 from app.models.device import Device
 from app.models.zone import Zone
+from app.routers._scope import require_site_scope
 from app.services import semaphore as sem
 from app.services.audit import write_audit_event
 from app.services.token import TokenPayload
@@ -23,16 +24,13 @@ _DEVICE_ID_RE = re.compile(r"^[a-z0-9\-_.]{1,128}$")
 _UNIT_NAME_RE = re.compile(r"^[a-zA-Z0-9\-_.@:\\]{1,256}$")
 
 
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
-
-
 async def _get_scoped_device(db: AsyncSession, device_id: str, user: TokenPayload) -> Device | None:
+    scope = require_site_scope(user)
     result = await db.execute(select(Device).where(Device.device_id == device_id))
     device = result.scalar_one_or_none()
     if device is None:
         return None
-    if not _is_site_scoped_user(user):
+    if scope is None:
         return device
 
     site_id = device.site_id
@@ -40,7 +38,7 @@ async def _get_scoped_device(db: AsyncSession, device_id: str, user: TokenPayloa
         zone = await db.get(Zone, device.zone_id)
         site_id = zone.site_id if zone else None
 
-    if site_id != user.site_scope:
+    if site_id != scope:
         return None
     return device
 

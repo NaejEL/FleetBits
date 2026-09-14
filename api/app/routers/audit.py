@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.dependencies import get_current_user
 from app.models.audit import AuditEvent
+from app.routers._scope import require_site_scope
 from app.schemas.audit import AuditEventRead
 from app.services.token import TokenPayload
 
@@ -26,8 +27,9 @@ async def list_audit_events(
 ):
     """Query the append-only audit log.
 
-    Users with site_scope are automatically scoped to their site via target JSONB fields.
+    Callers confined to a site are automatically scoped to it via target JSONB fields.
     """
+    site_scope = require_site_scope(user)
     q = select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
 
     if actor:
@@ -39,12 +41,12 @@ async def list_audit_events(
     if until:
         q = q.where(AuditEvent.created_at <= until)
 
-    # Non-admin users with site_scope: restrict to events for their site.
-    if user.role != "admin" and user.site_scope:
+    # A confined caller only sees the events of its own site.
+    if site_scope is not None:
         q = q.where(
             or_(
-                AuditEvent.target["site"].astext == user.site_scope,
-                AuditEvent.target["siteId"].astext == user.site_scope,
+                AuditEvent.target["site"].astext == site_scope,
+                AuditEvent.target["siteId"].astext == site_scope,
             )
         )
 

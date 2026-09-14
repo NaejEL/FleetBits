@@ -118,6 +118,205 @@ async def site_scoped_user(test_db):
 
 
 @pytest_asyncio.fixture
+async def unscoped_operator_user(test_db):
+    """Create a non-admin user whose token carries no site scope.
+
+    ``TokenPayload`` allows this shape, and it is the fail-closed case: there is
+    no site to confine such a caller to, so it must be refused rather than
+    served fleet-wide data.
+    """
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="unscoped_test",
+            email="unscoped@test.local",
+            password_hash="dummy_hash",
+            role="operator",
+            site_scope=None,
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def ci_bot_user(test_db):
+    """Create a ``ci_bot`` user in the shape `ApiKeyCreate` mints by default.
+
+    ``app/schemas/user.py`` defaults ``ApiKeyCreate.role`` to ``"ci_bot"`` with
+    ``site_scope=None``, and the UI submits that default, so this — not the
+    scoped variant — is what a CI key actually looks like. The role is
+    fleet-wide by nature: confining it would make the ring-0 rules of
+    ``deployments.py`` unreachable.
+    """
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="ci_bot_test",
+            email="ci-bot@test.local",
+            password_hash="dummy_hash",
+            role="ci_bot",
+            site_scope=None,
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def viewer_user(test_db):
+    """Create a fleet-wide ``viewer``: a read-only role with no site scope."""
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="viewer_test",
+            email="viewer@test.local",
+            password_hash="dummy_hash",
+            role="viewer",
+            site_scope=None,
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def trailing_newline_scope_user(test_db):
+    """Create a user whose ``site_scope`` ends in a newline.
+
+    ``re.match(r"...$", "site-a\n")`` succeeds — ``$`` also matches just before
+    a trailing newline — so this value used to pass label validation and be
+    interpolated, newline included, into a server-built expression.
+    """
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="trailing_newline_test",
+            email="trailing-newline@test.local",
+            password_hash="dummy_hash",
+            role="operator",
+            site_scope="site-a\n",
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def scoped_ci_bot_user(test_db):
+    """Create a ``ci_bot`` that *does* carry a site scope.
+
+    A fleet-wide role is not an exemption: a key issued with a scope stays
+    confined to it. This guards the half of decision 2 that must not be undone
+    while restoring the scope-less shape.
+    """
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="ci_bot_scoped_test",
+            email="ci-bot-scoped@test.local",
+            password_hash="dummy_hash",
+            role="ci_bot",
+            site_scope="site-a",
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def scoped_viewer_user(test_db):
+    """Create a ``viewer`` that carries a site scope — confined like any other role."""
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="viewer_scoped_test",
+            email="viewer-scoped@test.local",
+            password_hash="dummy_hash",
+            role="viewer",
+            site_scope="site-a",
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def unknown_role_user(test_db):
+    """Create a user whose role is outside ``VALID_ROLES``.
+
+    ``fleet_user.role`` is an unconstrained ``Text`` column and the JWT carries
+    the role verbatim, so an unrecognised role is a shape the predicate has to
+    answer for. The fleet-wide set is an allow-list, so the answer is a refusal.
+    """
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="unknown_role_test",
+            email="unknown-role@test.local",
+            password_hash="dummy_hash",
+            role="superuser",
+            site_scope=None,
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def technician_user(test_db):
+    """Create a ``technician`` with no site scope — a scopable role, so an anomaly."""
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="technician_test",
+            email="technician@test.local",
+            password_hash="dummy_hash",
+            role="technician",
+            site_scope=None,
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def scoped_admin_user(test_db):
+    """Create an ``admin`` user that nevertheless carries a site scope.
+
+    ``TokenPayload`` allows this shape and only an admin can assign it. It used
+    to be the permissive half of the disagreement between the two scoping
+    predicates: ``telemetry.py`` confined such a token, ``observability.py``
+    served it the whole fleet. The shared predicate now confines it, and that
+    behaviour change needs a regression test of its own (GUIDELINES §3).
+    """
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="scoped_admin_test",
+            email="scoped-admin@test.local",
+            password_hash="dummy_hash",
+            role="admin",
+            site_scope="site-a",
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def injecting_scope_user(test_db):
+    """Create a user whose ``site_scope`` is a PromQL/LogQL injection.
+
+    ``users.site_scope`` is an unconstrained ``Text`` column, so nothing at the
+    storage layer stops this value; the routers interpolate it into
+    server-built expressions and must validate it like any label value.
+    """
+    async with AsyncSession(test_db, expire_on_commit=False) as session:
+        user = User(
+            username="injecting_scope_test",
+            email="injecting-scope@test.local",
+            password_hash="dummy_hash",
+            role="operator",
+            site_scope='site-a",job=~".*',
+        )
+        session.add(user)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
 async def test_sites(test_db):
     """Create test sites."""
     async with AsyncSession(test_db, expire_on_commit=False) as session:
@@ -220,6 +419,106 @@ async def scoped_token(site_scoped_user):
         sub=site_scoped_user.username,
         role=site_scoped_user.role,
         site_scope=site_scoped_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def unscoped_operator_token(unscoped_operator_user):
+    """Generate a token for the non-admin, scope-less user."""
+    return create_operator_token(
+        sub=unscoped_operator_user.username,
+        role=unscoped_operator_user.role,
+        site_scope=unscoped_operator_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def ci_bot_token(ci_bot_user):
+    """Generate the default-shaped CI key token: role ``ci_bot``, no site scope."""
+    return create_operator_token(
+        sub=ci_bot_user.username,
+        role=ci_bot_user.role,
+        site_scope=ci_bot_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def viewer_token(viewer_user):
+    """Generate a fleet-wide ``viewer`` token."""
+    return create_operator_token(
+        sub=viewer_user.username,
+        role=viewer_user.role,
+        site_scope=viewer_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def trailing_newline_scope_token(trailing_newline_scope_user):
+    """Generate a token whose ``site_scope`` claim carries a trailing newline."""
+    return create_operator_token(
+        sub=trailing_newline_scope_user.username,
+        role=trailing_newline_scope_user.role,
+        site_scope=trailing_newline_scope_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def scoped_ci_bot_token(scoped_ci_bot_user):
+    """Generate a ``ci_bot`` token confined to site-a."""
+    return create_operator_token(
+        sub=scoped_ci_bot_user.username,
+        role=scoped_ci_bot_user.role,
+        site_scope=scoped_ci_bot_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def scoped_viewer_token(scoped_viewer_user):
+    """Generate a ``viewer`` token confined to site-a."""
+    return create_operator_token(
+        sub=scoped_viewer_user.username,
+        role=scoped_viewer_user.role,
+        site_scope=scoped_viewer_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def unknown_role_token(unknown_role_user):
+    """Generate a token carrying a role outside ``VALID_ROLES``."""
+    return create_operator_token(
+        sub=unknown_role_user.username,
+        role=unknown_role_user.role,
+        site_scope=unknown_role_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def technician_token(technician_user):
+    """Generate a scope-less ``technician`` token."""
+    return create_operator_token(
+        sub=technician_user.username,
+        role=technician_user.role,
+        site_scope=technician_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def scoped_admin_token(scoped_admin_user):
+    """Generate a token for the admin user that carries a site scope."""
+    return create_operator_token(
+        sub=scoped_admin_user.username,
+        role=scoped_admin_user.role,
+        site_scope=scoped_admin_user.site_scope,
+    )
+
+
+@pytest_asyncio.fixture
+async def injecting_scope_token(injecting_scope_user):
+    """Generate a token whose ``site_scope`` claim is an injection payload."""
+    return create_operator_token(
+        sub=injecting_scope_user.username,
+        role=injecting_scope_user.role,
+        site_scope=injecting_scope_user.site_scope,
     )
 
 

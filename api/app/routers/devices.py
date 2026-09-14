@@ -12,6 +12,7 @@ from app.db import get_db
 from app.dependencies import get_current_user, get_device_from_bearer, require_roles
 from app.models.device import Device, ServiceUnit
 from app.models.token import ProvisionToken
+from app.routers._scope import require_site_scope
 from app.schemas.device import (
     DeviceCreate,
     DeviceRead,
@@ -41,13 +42,10 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 services_router = APIRouter(prefix="/services", tags=["services"])
 
 
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
-
-
 def _apply_device_scope(query, user: TokenPayload):
-    if _is_site_scoped_user(user):
-        return query.where(Device.site_id == user.site_scope)
+    scope = require_site_scope(user)
+    if scope is not None:
+        return query.where(Device.site_id == scope)
     return query
 
 
@@ -284,7 +282,8 @@ async def create_device(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user) and user.site_scope != body.site_id:
+    scope = require_site_scope(user)
+    if scope is not None and scope != body.site_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     device = Device(**body.model_dump())
@@ -316,7 +315,8 @@ async def update_device(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    if _is_site_scoped_user(user) and body.site_id and body.site_id != user.site_scope:
+    scope = require_site_scope(user)
+    if scope is not None and body.site_id and body.site_id != scope:
         raise HTTPException(status_code=403, detail="Access denied")
 
     for key, val in body.model_dump(exclude_none=True).items():
@@ -570,8 +570,18 @@ async def get_mqtt_acl(
             "device_<device_id>": ["device/<device_id>/#", "$SYS/broker/clients/connected"],
             "fleet_exporter": ["$SYS/#"],
         }
+
+    Site scope applies here like it does to every other device listing: this
+    route enumerates device identities and their topic namespaces, which is
+    inventory. A caller confined to a site used to receive every other site's
+    MQTT usernames and topic patterns from it.
+
+    Operational consequence: the broker bootstrap needs the *whole* fleet's
+    ACL, so ``FLEET_OPERATOR_TOKEN`` must be a fleet-wide token (an ``admin``
+    token). A token carrying a ``site_scope`` gets that site's devices only.
     """
     q = select(Device).where(Device.mqtt_username.isnot(None))
+    q = _apply_device_scope(q, user)
     result = await db.execute(q)
     devices = result.scalars().all()
 

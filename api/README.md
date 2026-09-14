@@ -174,6 +174,52 @@ That route returns the device identity file itself — inert `KEY=value` lines a
 `/etc/fleet/device-identity.conf`. The Ansible bootstrap playbook renders the same contract.
 Device tokens can only call device-scoped endpoints (heartbeat, provision) — not operator endpoints.
 
+### Site scoping — one predicate, `app/routers/_scope.py`
+
+Every router that narrows a response or a mutation to one site asks the same
+question through `require_site_scope(user)`, which returns the site the caller is
+confined to, or `None` for a fleet-wide caller:
+
+| Token | Before | Now |
+|---|---|---|
+| any role, **with** a `site_scope` | confined on `telemetry.py`, fleet-wide on the ten other routers when the role was `admin` | **confined** to that site, whatever the role |
+| `admin` / `ci_bot` / `viewer`, no `site_scope` | fleet-wide | fleet-wide (unchanged) |
+| `operator` / `technician`, **no** `site_scope` | fleet-wide everywhere | **403** — no data at all |
+| any other role, no `site_scope` | fleet-wide | **403** — the fleet-wide set is an allow-list |
+
+Eleven routers used to carry their own copy of this decision, and the copies
+disagreed: an `admin` carrying a `site_scope` was told "you are confined" by
+`telemetry.py`, which keyed on the scope alone, and "you are not" by
+`/api/v1/devices` (200, with every site's devices), which additionally required a
+non-`admin` role. The disagreements are now settled on the stricter reading (GUIDELINES §1, §3 — fail
+closed, least privilege), which makes this an **intentional, documented tightening of
+the public API** (GUIDELINES §8): a token of one of the three bottom shapes above
+gets less than it used to on `/devices`, `/zones`, `/sites`, `/profiles`,
+`/deployments`, `/hotfixes`, `/overrides`, `/operations/*`, `/audit` and
+`/api/v1/query/*` alike, on read and on mutation paths.
+
+Which roles are scopable and which are fleet-wide comes from `app/models/user.py`,
+which documents that `site_scope` "restricts operator-role users to a single site".
+`admin`, `ci_bot` and `viewer` are fleet-wide by nature — a CI key is minted without
+a scope (`ApiKeyCreate` defaults to `role="ci_bot"`, `site_scope=None`) and a
+`viewer` is a fleet-wide read role — so the absence of a scope is their normal shape,
+not an anomaly, and they keep their own controls instead: role gates, and the ring-0
+restriction `deployments.py` applies to `ci_bot`.
+
+Assigning a `site_scope` to an `admin` confines that admin **on the ten routers
+that ask this question**, on reads and mutations alike. It is not a containment boundary: user
+administration lives in `app/routers/auth.py`, which is gated on role only, so a
+scoped admin can `PATCH /api/v1/auth/users/{its own id}` with an empty `site_scope`
+and log back in fleet-wide. Scoping an admin is an operational guard rail against
+mistakes on the fleet routers, **not** a privilege reduction — an admin who must not
+reach another site must not be an admin. Closing that self-widening is tracked as
+`SEC-P0-10` in `SECURITY_ROADMAP.md`.
+
+The predicate is a **decision**, not a filter — it never widens a query. Where a
+scope is interpolated into a server-built PromQL/LogQL expression,
+`observability.py` validates it as a label value first: `users.site_scope` is an
+unconstrained `Text` column, so a scope is untrusted input like any other.
+
 ---
 
 ## Project structure
@@ -245,7 +291,21 @@ app/
 | `GET` | `/api/v1/query/device-metrics/{id}` | Device metrics proxy |
 | `GET` | `/api/v1/query/recent-logs` | Loki query proxy |
 | `GET` | `/api/v1/alerts` | Alertmanager open alerts summary |
+| `GET/POST/HEAD` | `/api/v1/telemetry/authz` | Device telemetry forward-auth / diagnostics |
+| `POST` | `/api/v1/telemetry/metrics/write` | Prometheus remote_write ingest proxy (device-token auth) |
+| `POST` | `/api/v1/telemetry/logs/push` | Loki push ingest proxy (device-token auth) |
 | `GET` | `/api/v1/audit` | Audit log (filterable, paginated) |
+
+`app/routers/telemetry.py` is an **ingest-only** router: the three telemetry paths
+listed above are every path it declares. It used to carry four instant/range query
+proxies as well, which took a PromQL/LogQL expression from the caller and tried to
+confine it to the caller's site by rewriting the expression text. That cannot be done
+safely (a selector block hidden in a comment or in a string literal defeated it), so
+the four were removed rather than patched — an intentional, unversioned removal of a
+public API, with no replacement endpoint. Operator reads go through the parameterised `/api/v1/query/*`
+endpoints above, whose expressions are built server-side from validated label values.
+Isolation is **not** enforced at Prometheus/Loki themselves — see `SEC-P0-08` and
+`SEC-P0-09` in `SECURITY_ROADMAP.md`.
 
 Full interactive spec with schemas and try-it: **http://localhost:8000/docs**
 
