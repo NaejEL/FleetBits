@@ -11,16 +11,13 @@ from app.dependencies import get_current_user, require_roles
 from app.models.device import Device
 from app.models.deployment import Hotfix
 from app.models.zone import Zone
+from app.routers._scope import require_site_scope
 from app.schemas.deployment import HotfixCreate, HotfixRead
 from app.services import semaphore as sem
 from app.services.audit import write_audit_event
 from app.services.token import TokenPayload
 
 router = APIRouter(prefix="/hotfixes", tags=["hotfixes"])
-
-
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
 
 
 async def _resolve_target_scope_site_id(db: AsyncSession, target_scope: dict) -> str | None:
@@ -47,10 +44,11 @@ async def _resolve_target_scope_site_id(db: AsyncSession, target_scope: dict) ->
 
 
 async def _can_access_hotfix(db: AsyncSession, hotfix: Hotfix, user: TokenPayload) -> bool:
-    if not _is_site_scoped_user(user):
+    site_scope = require_site_scope(user)
+    if site_scope is None:
         return True
     site_id = await _resolve_target_scope_site_id(db, hotfix.target_scope or {})
-    return site_id == user.site_scope
+    return site_id == site_scope
 
 
 class SshReconcileRequest(BaseModel):
@@ -66,12 +64,13 @@ async def list_hotfixes(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
+    site_scope = require_site_scope(user)
     q = select(Hotfix).order_by(Hotfix.created_at.desc())
     if reconciled is not None:
         q = q.where(Hotfix.reconciled == reconciled)
     result = await db.execute(q)
     hotfixes = result.scalars().all()
-    if not _is_site_scoped_user(user):
+    if site_scope is None:
         return hotfixes
     visible: list[Hotfix] = []
     for hotfix in hotfixes:
@@ -101,9 +100,10 @@ async def create_hotfix(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user):
+    site_scope = require_site_scope(user)
+    if site_scope is not None:
         site_id = await _resolve_target_scope_site_id(db, body.target_scope)
-        if site_id != user.site_scope:
+        if site_id != site_scope:
             raise HTTPException(status_code=403, detail="Access denied")
 
     hotfix = Hotfix(**body.model_dump())

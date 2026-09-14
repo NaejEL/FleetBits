@@ -13,12 +13,16 @@ from app.db import get_db
 from app.dependencies import get_current_user
 from app.models.device import Device
 from app.models.zone import Zone
+from app.routers._scope import require_site_scope
 from app.services.token import TokenPayload
 
 router = APIRouter(tags=["observability"])
 
 # Strict label validation to prevent PromQL/LogQL injection
-_LABEL_VALUE_RE = re.compile(r"^[a-zA-Z0-9_.:-]{1,128}$")
+# ``\Z`` and not ``$``: ``$`` also matches just before a trailing newline, so
+# ``site-a\n`` would pass this check and be interpolated into a server-built
+# expression with the newline still on it.
+_LABEL_VALUE_RE = re.compile(r"^[a-zA-Z0-9_.:-]{1,128}\Z")
 
 
 def _validate_label_value(value: str, field_name: str) -> str:
@@ -27,31 +31,48 @@ def _validate_label_value(value: str, field_name: str) -> str:
     return value
 
 
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
+def _scoped_site(user: TokenPayload) -> str | None:
+    """Return the caller's confining site, validated as a label value.
+
+    ``site_scope`` reaches this module from the token, and the token from
+    ``users.site_scope``, an unconstrained ``Text`` column. Every server-built
+    PromQL/LogQL expression below interpolates that string between double
+    quotes, so a scope such as ``site-a",job=~".*`` would close the selector
+    early and widen the expression to the whole fleet — exactly the injection
+    ``_validate_label_value`` already prevents on a client-supplied ``site``.
+
+    A scope that is not a well-formed label value is therefore refused here,
+    before any expression is built, rather than trusted for being server-side.
+    """
+    scope = require_site_scope(user)
+    if scope is not None:
+        _validate_label_value(scope, "site scope")
+    return scope
 
 
 async def _get_scoped_device(db: AsyncSession, device_id: str, user: TokenPayload) -> Device | None:
+    scope = _scoped_site(user)
     result = await db.execute(select(Device).where(Device.device_id == device_id))
     device = result.scalar_one_or_none()
     if device is None:
         return None
-    if not _is_site_scoped_user(user):
+    if scope is None:
         return device
     site_id = device.site_id
     if site_id is None and device.zone_id:
         zone = await db.get(Zone, device.zone_id)
         site_id = zone.site_id if zone else None
-    if site_id != user.site_scope:
+    if site_id != scope:
         return None
     return device
 
 
 async def _get_scoped_zone(db: AsyncSession, zone_id: str, user: TokenPayload) -> Zone | None:
+    scope = _scoped_site(user)
     zone = await db.get(Zone, zone_id)
     if zone is None:
         return None
-    if _is_site_scoped_user(user) and zone.site_id != user.site_scope:
+    if scope is not None and zone.site_id != scope:
         return None
     return zone
 
@@ -111,12 +132,13 @@ async def query_service_health(
     user: TokenPayload = Depends(get_current_user),
 ):
     """Return systemd unit states from Prometheus for a zone or site."""
+    scope = _scoped_site(user)
     filters = 'state="failed"'
     scoped_site: str | None = None
-    if _is_site_scoped_user(user):
-        if site and site != user.site_scope:
+    if scope is not None:
+        if site and site != scope:
             raise HTTPException(status_code=404, detail="Site not found")
-        scoped_site = user.site_scope
+        scoped_site = scope
     elif site:
         scoped_site = _validate_label_value(site, "site")
 
@@ -172,6 +194,7 @@ async def query_recent_logs(
     user: TokenPayload = Depends(get_current_user),
 ):
     """Proxy a LogQL query to Loki."""
+    scope = _scoped_site(user)
     filters = []
     if device_id:
         device = await _get_scoped_device(db, device_id, user)
@@ -180,8 +203,8 @@ async def query_recent_logs(
         filters.append(f'device_id="{device_id}"')
     if service:
         filters.append(f'service="{service}"')
-    if _is_site_scoped_user(user):
-        filters.append(f'site="{user.site_scope}"')
+    if scope is not None:
+        filters.append(f'site="{scope}"')
     label_selector = "{" + ",".join(filters) + "}" if filters else "{}"
     logql = label_selector
 
@@ -204,6 +227,19 @@ async def list_alerts(
     user: TokenPayload = Depends(get_current_user),
 ):
     """Proxy active alerts from Alertmanager, optionally filtered by site label."""
+    scope = _scoped_site(user)
+
+    # Settle the scope *before* reaching Alertmanager. The predicate already ran
+    # above, but the cross-site rejection used to run after the fetch, so a
+    # site-a token asking for ?site=site-b still caused a real upstream request
+    # before its 404. Nothing leaked, yet the request was made on behalf of a
+    # caller that had no right to the answer; deciding first keeps the rejection
+    # free of any upstream side effect.
+    if scope is not None:
+        if site and site != scope:
+            raise HTTPException(status_code=404, detail="Site not found")
+        site = scope
+
     params: dict = {}
     if status == "open":
         params["active"] = "true"
@@ -217,11 +253,6 @@ async def list_alerts(
         params,
         10.0,
     )
-
-    if _is_site_scoped_user(user):
-        if site and site != user.site_scope:
-            raise HTTPException(status_code=404, detail="Site not found")
-        site = user.site_scope
 
     # Client-side filter by site label if requested
     if site:

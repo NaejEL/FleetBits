@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.dependencies import get_current_user, require_roles
 from app.models.zone import Zone
+from app.routers._scope import require_site_scope
 from app.schemas.zone import ZoneCreate, ZoneRead, ZoneUpdate
 from app.services.audit import write_audit_event
 from app.services.token import TokenPayload
@@ -13,14 +14,11 @@ from app.services.token import TokenPayload
 router = APIRouter(prefix="/zones", tags=["zones"])
 
 
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
-
-
 async def _get_scoped_zone(db: AsyncSession, zone_id: str, user: TokenPayload) -> Zone | None:
+    scope = require_site_scope(user)
     q = select(Zone).where(Zone.zone_id == zone_id)
-    if _is_site_scoped_user(user):
-        q = q.where(Zone.site_id == user.site_scope)
+    if scope is not None:
+        q = q.where(Zone.site_id == scope)
     result = await db.execute(q)
     return result.scalar_one_or_none()
 
@@ -32,13 +30,14 @@ async def list_zones(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
+    scope = require_site_scope(user)
     q = select(Zone)
     if site_id:
         q = q.where(Zone.site_id == site_id)
     if profile_id:
         q = q.where(Zone.profile_id == profile_id)
-    if _is_site_scoped_user(user):
-        q = q.where(Zone.site_id == user.site_scope)
+    if scope is not None:
+        q = q.where(Zone.site_id == scope)
     result = await db.execute(q)
     return result.scalars().all()
 
@@ -62,7 +61,8 @@ async def create_zone(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user) and user.site_scope != body.site_id:
+    scope = require_site_scope(user)
+    if scope is not None and scope != body.site_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     zone = Zone(**body.model_dump())
