@@ -524,21 +524,6 @@ def execute_package_promotion(source_repo: str, target_repo: str, force_replace:
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090").rstrip("/")
 
 
-def prom_query(query: str) -> dict | None:
-    """Execute an instant Prometheus query; return the data payload or None on failure."""
-    try:
-        resp = requests.get(
-            f"{PROMETHEUS_URL}/api/v1/query",
-            params={"query": query},
-            timeout=8,
-        )
-        if resp.ok:
-            return resp.json().get("data")
-    except Exception:
-        pass
-    return None
-
-
 def prom_targets() -> list[dict]:
     """Return all active Prometheus scrape targets."""
     try:
