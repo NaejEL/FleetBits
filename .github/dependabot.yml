@@ -1,8 +1,8 @@
-# Un seul dépôt, mais quatre composants aux écosystèmes distincts : dependabot
-# ne découvre pas les manifestes tout seul, chaque répertoire est déclaré.
+# One repository, four components with distinct ecosystems. Dependabot does not
+# discover manifests on its own, so every directory is declared explicitly.
 version: 2
 updates:
-  # Les workflows vivent désormais à la racine, et eux seuls s'exécutent.
+  # Workflows live at the repository root, and only those ever run.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

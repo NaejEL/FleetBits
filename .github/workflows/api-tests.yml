@@ -1,14 +1,14 @@
 ---
 name: API Tests
 
-# La suite pytest complète de api/, y compris ses assertions inter-dossiers :
-# le contrat d'identité d'appareil se lit dans agent/ et platform/, qui sont
-# désormais des dossiers du même dépôt.
+# The full pytest suite of api/, including its cross-component assertions: the
+# device identity contract is read from agent/ and platform/, which are now
+# directories of this same repository.
 #
-# Contrepartie de security-regression-stack.yml, qui exécute
-# `pytest -q -m security tests` DANS l'image conteneur fleet-api. Cette image ne
-# contient que /app : les tests marqués `crossrepo` ne peuvent pas y tourner —
-# et ils ne sont, délibérément, pas marqués `security`.
+# Counterpart to security-regression-stack.yml, which runs
+# `pytest -q -m security tests` INSIDE the fleet-api container image. That image
+# only contains /app, so tests marked `crossrepo` cannot run there — and they
+# are deliberately not marked `security`.
 
 on:
   pull_request:
