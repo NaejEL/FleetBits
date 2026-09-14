@@ -188,9 +188,10 @@ confined to, or `None` for a fleet-wide caller:
 | any other role, no `site_scope` | fleet-wide | **403** — the fleet-wide set is an allow-list |
 
 Eleven routers used to carry their own copy of this decision, and the copies
-disagreed: the same token was told "you are confined" by `/api/v1/query/*` (403) and
-"you are not" by `/api/v1/devices` (200, with every site's devices). The
-disagreements are now settled on the stricter reading (GUIDELINES §1, §3 — fail
+disagreed: an `admin` carrying a `site_scope` was told "you are confined" by
+`telemetry.py`, which keyed on the scope alone, and "you are not" by
+`/api/v1/devices` (200, with every site's devices), which additionally required a
+non-`admin` role. The disagreements are now settled on the stricter reading (GUIDELINES §1, §3 — fail
 closed, least privilege), which makes this an **intentional, documented tightening of
 the public API** (GUIDELINES §8): a token of one of the three bottom shapes above
 gets less than it used to on `/devices`, `/zones`, `/sites`, `/profiles`,
