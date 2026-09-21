@@ -702,74 +702,120 @@ class TestEndToEndTelemetryFlow:
     async def test_telemetry_queries_cannot_cross_site_boundaries(
         self, client: AsyncClient, scoped_token, monkeypatch
     ):
-        """Site-scoped operator cannot query telemetry data outside their site.
+        """A site-scoped operator has no free-form telemetry query path at all.
 
-        The query proxy must:
-        1. Reject queries with a ``site`` label targeting a different site (HTTP 403).
-        2. Reject negative site matchers (site!="..." / site!~"...") for scoped users.
-        3. Inject the user's site scope into queries that omit a site selector.
-        4. Not duplicate the site label when it is already correctly specified.
+        Site isolation used to be attempted by rewriting the operator's PromQL /
+        LogQL *text*, which no textual rewrite can do safely. The four query
+        proxies are gone (SPEC-cloisonnement-telemetrie, decision 1), so every
+        query that used to be rejected, accepted or rewritten must now reach no
+        upstream whatsoever. This test therefore asserts on the absence of an
+        upstream call, never on the content of a forwarded expression.
         """
         fake_client = _FakeAsyncClient()
         monkeypatch.setattr(telemetry_router.httpx, "AsyncClient", lambda *a, **k: fake_client)
 
-        # ── Cross-site exact match → 403 ─────────────────────────────────────
-        resp = await client.get(
-            "/api/v1/telemetry/metrics/query",
-            headers={"Authorization": f"Bearer {scoped_token}"},
-            params={"query": 'up{site="site-b"}'},
-        )
-        assert resp.status_code == 403, f"Expected 403 for cross-site site-b query, got {resp.status_code}"
-        assert "Cross-site" in resp.json().get("detail", "")
+        cases = [
+            # Formerly rejected with 403 (cross-site / negative matcher)
+            ("/api/v1/telemetry/metrics/query", {"query": 'up{site="site-b"}'}),
+            ("/api/v1/telemetry/metrics/query", {"query": 'up{site!="site-a"}'}),
+            (
+                "/api/v1/telemetry/metrics/query_range",
+                {"query": 'rate(http_requests{site="site-b"}[5m])', "start": "0", "end": "1", "step": "60"},
+            ),
+            (
+                "/api/v1/telemetry/logs/query_range",
+                {"query": '{app="kiosk",site="site-b"}', "start": "0", "end": "1"},
+            ),
+            # Formerly accepted after rewriting
+            ("/api/v1/telemetry/metrics/query", {"query": 'up{job="fleet-agent"}'}),
+            ("/api/v1/telemetry/logs/query", {"query": '{app="kiosk",site="site-a"}'}),
+        ]
 
-        # ── Negative site matcher → 403 ──────────────────────────────────────
-        resp = await client.get(
-            "/api/v1/telemetry/metrics/query",
-            headers={"Authorization": f"Bearer {scoped_token}"},
-            params={"query": 'up{site!="site-a"}'},
-        )
-        assert resp.status_code == 403, f"Expected 403 for negative site selector, got {resp.status_code}"
+        for path, params in cases:
+            resp = await client.get(
+                path,
+                headers={"Authorization": f"Bearer {scoped_token}"},
+                params=params,
+            )
+            assert resp.status_code in (404, 405), (
+                f"{path} must no longer be served; got {resp.status_code} for params {params!r}"
+            )
 
-        # Cross-site check also enforced on query_range
-        resp = await client.get(
-            "/api/v1/telemetry/metrics/query_range",
-            headers={"Authorization": f"Bearer {scoped_token}"},
-            params={"query": 'rate(http_requests{site="site-b"}[5m])', "start": "0", "end": "1", "step": "60"},
+        assert fake_client.calls == [], (
+            f"No telemetry query may reach an upstream any more; got {fake_client.calls!r}"
         )
-        assert resp.status_code == 403
 
-        # Cross-site check enforced on Loki query_range
-        resp = await client.get(
-            "/api/v1/telemetry/logs/query_range",
-            headers={"Authorization": f"Bearer {scoped_token}"},
-            params={"query": '{app="kiosk",site="site-b"}', "start": "0", "end": "1"},
-        )
-        assert resp.status_code == 403
 
-        # ── No site selector → site injected into forwarded query ────────────
-        fake_client.calls.clear()
-        resp = await client.get(
-            "/api/v1/telemetry/metrics/query",
-            headers={"Authorization": f"Bearer {scoped_token}"},
-            params={"query": 'up{job="fleet-agent"}'},
-        )
-        assert resp.status_code == 200, f"Expected 200 for in-scope query, got {resp.status_code}"
-        assert len(fake_client.calls) == 1, "Expected one forwarded request to Prometheus"
-        forwarded_query = fake_client.calls[0]["params"]["query"]
-        assert 'site="site-a"' in forwarded_query, (
-            f"Expected site-a injected into forwarded query; got: {forwarded_query!r}"
-        )
-        assert 'job="fleet-agent"' in forwarded_query, "Original label must survive injection"
+# Two escape payloads that defeated the textual site-scope rewrite. Both carry
+# an inert `{site="site-a"}` block that satisfied _SELECTOR_BLOCK_RE, so no site
+# constraint was ever appended, while the expression the engine actually
+# evaluates (`up`) stayed fleet-wide.
+#   (a) the block sits in a PromQL comment, bare metric name in front;
+#   (b) the block sits inside a string argument of label_replace(), bare metric
+#       name as first argument.
+_ESCAPE_QUERIES = {
+    "promql_comment": 'up # {site="site-a"}',
+    "label_replace_string_literal": 'label_replace(up, "src", "{site=\\"site-a\\"}", "dst", ".*")',
+}
 
-        # ── Correct site selector already present → no duplicate injection ───
-        fake_client.calls.clear()
+_QUERY_PATHS = (
+    "/api/v1/telemetry/metrics/query",
+    "/api/v1/telemetry/metrics/query_range",
+    "/api/v1/telemetry/logs/query",
+    "/api/v1/telemetry/logs/query_range",
+)
+
+
+@pytest.mark.security
+class TestTelemetryQueryProxyRemoved:
+    """The free-form telemetry query proxy is gone — VIB-01.
+
+    These tests fail on the pre-fix code, where the escape payloads below were
+    forwarded verbatim to Prometheus/Loki with an HTTP 200.
+    """
+
+    @pytest.mark.parametrize("path", _QUERY_PATHS)
+    async def test_query_paths_are_not_served(
+        self, client: AsyncClient, scoped_token, path: str
+    ):
+        """Each removed query path answers 404/405 to an authenticated caller."""
         resp = await client.get(
-            "/api/v1/telemetry/metrics/query",
+            path,
             headers={"Authorization": f"Bearer {scoped_token}"},
-            params={"query": 'up{site="site-a",job="node"}'},
+            params={"query": "up", "start": "0", "end": "1", "step": "60"},
         )
-        assert resp.status_code == 200
-        forwarded_query = fake_client.calls[0]["params"]["query"]
-        assert forwarded_query.count('site="site-a"') == 1, (
-            f"site label must not be duplicated: {forwarded_query!r}"
+        assert resp.status_code in (404, 405), (
+            f"{path} must not be declared any more; got {resp.status_code}"
+        )
+
+    @pytest.mark.parametrize("escape", sorted(_ESCAPE_QUERIES))
+    @pytest.mark.parametrize("path", _QUERY_PATHS)
+    async def test_scope_escape_payloads_reach_no_upstream(
+        self, client: AsyncClient, scoped_token, monkeypatch, path: str, escape: str
+    ):
+        """No unconstrained expression can reach Prometheus or Loki.
+
+        A site-a operator sends an expression that evades textual site-scope
+        rewriting. The only acceptable outcome is that no upstream request is
+        made at all.
+        """
+        fake_client = _FakeAsyncClient()
+        monkeypatch.setattr(telemetry_router.httpx, "AsyncClient", lambda *a, **k: fake_client)
+
+        resp = await client.get(
+            path,
+            headers={"Authorization": f"Bearer {scoped_token}"},
+            params={
+                "query": _ESCAPE_QUERIES[escape],
+                "start": "0",
+                "end": "1",
+                "step": "60",
+            },
+        )
+
+        assert resp.status_code in (404, 405), (
+            f"{path} answered {resp.status_code} to escape payload {escape}"
+        )
+        assert fake_client.calls == [], (
+            f"Escape payload {escape} reached an upstream: {fake_client.calls!r}"
         )

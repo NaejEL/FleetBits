@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.dependencies import get_current_user, require_roles
 from app.models.site import Site
+from app.routers._scope import require_site_scope
 from app.schemas.site import SiteCreate, SiteRead, SiteUpdate
 from app.services.audit import write_audit_event
 from app.services.token import TokenPayload
@@ -13,14 +14,11 @@ from app.services.token import TokenPayload
 router = APIRouter(prefix="/sites", tags=["sites"])
 
 
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
-
-
 async def _get_scoped_site(db: AsyncSession, site_id: str, user: TokenPayload) -> Site | None:
+    scope = require_site_scope(user)
     q = select(Site).where(Site.site_id == site_id)
-    if _is_site_scoped_user(user):
-        q = q.where(Site.site_id == user.site_scope)
+    if scope is not None:
+        q = q.where(Site.site_id == scope)
     result = await db.execute(q)
     return result.scalar_one_or_none()
 
@@ -30,9 +28,10 @@ async def list_sites(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
+    scope = require_site_scope(user)
     q = select(Site)
-    if _is_site_scoped_user(user):
-        q = q.where(Site.site_id == user.site_scope)
+    if scope is not None:
+        q = q.where(Site.site_id == scope)
     result = await db.execute(q)
     return result.scalars().all()
 
@@ -56,7 +55,8 @@ async def create_site(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user) and user.site_scope != body.site_id:
+    scope = require_site_scope(user)
+    if scope is not None and scope != body.site_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     site = Site(**body.model_dump())

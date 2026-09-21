@@ -11,6 +11,7 @@ from app.dependencies import get_current_user, require_roles
 from app.models.device import Device
 from app.models.deployment import Deployment
 from app.models.zone import Zone
+from app.routers._scope import require_site_scope
 from app.schemas.deployment import DeploymentCreate, DeploymentRead, TriggerRequest
 from app.services import semaphore as sem
 from app.services.audit import write_audit_event
@@ -24,10 +25,6 @@ _SEMAPHORE_STATUS_MAP = {
     "success": "success",
     "error": "failed",
 }
-
-
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
 
 
 async def _resolve_target_scope_site_id(db: AsyncSession, target_scope: dict) -> str | None:
@@ -54,10 +51,11 @@ async def _resolve_target_scope_site_id(db: AsyncSession, target_scope: dict) ->
 
 
 async def _can_access_deployment(db: AsyncSession, deployment: Deployment, user: TokenPayload) -> bool:
-    if not _is_site_scoped_user(user):
+    site_scope = require_site_scope(user)
+    if site_scope is None:
         return True
     site_id = await _resolve_target_scope_site_id(db, deployment.target_scope or {})
-    return site_id == user.site_scope
+    return site_id == site_scope
 
 
 @router.get("", response_model=list[DeploymentRead])
@@ -67,6 +65,7 @@ async def list_deployments(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
+    site_scope = require_site_scope(user)
     q = select(Deployment).order_by(Deployment.started_at.desc())
     if status_filter:
         q = q.where(Deployment.status == status_filter)
@@ -74,7 +73,7 @@ async def list_deployments(
         q = q.where(Deployment.rollout_mode == rollout_mode)
     result = await db.execute(q)
     deployments = result.scalars().all()
-    if not _is_site_scoped_user(user):
+    if site_scope is None:
         return deployments
     visible: list[Deployment] = []
     for dep in deployments:
@@ -120,9 +119,10 @@ async def create_deployment(
     # ci_bot may only create ring-0 deployments
     if user.role == "ci_bot" and body.rollout_mode != "ring-0":
         raise HTTPException(status_code=403, detail="CI bot may only create ring-0 deployments")
-    if _is_site_scoped_user(user):
+    site_scope = require_site_scope(user)
+    if site_scope is not None:
         site_id = await _resolve_target_scope_site_id(db, body.target_scope)
-        if site_id != user.site_scope:
+        if site_id != site_scope:
             raise HTTPException(status_code=403, detail="Access denied")
 
     deployment = Deployment(

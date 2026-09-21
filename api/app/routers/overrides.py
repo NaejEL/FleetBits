@@ -9,16 +9,13 @@ from app.dependencies import get_current_user, require_roles
 from app.models.device import Device
 from app.models.deployment import Override
 from app.models.zone import Zone
+from app.routers._scope import require_site_scope
 from app.schemas.deployment import OverrideCreate, OverrideRead
 from app.services.audit import write_audit_event
 from app.services.resolver import resolve_manifest
 from app.services.token import TokenPayload
 
 router = APIRouter(tags=["overrides & manifest"])
-
-
-def _is_site_scoped_user(user: TokenPayload) -> bool:
-    return user.role != "admin" and bool(user.site_scope)
 
 
 async def _resolve_override_site_id(db: AsyncSession, scope: str, target_id: str) -> str | None:
@@ -40,10 +37,11 @@ async def _resolve_override_site_id(db: AsyncSession, scope: str, target_id: str
 
 
 async def _can_access_override(db: AsyncSession, override: Override, user: TokenPayload) -> bool:
-    if not _is_site_scoped_user(user):
+    site_scope = require_site_scope(user)
+    if site_scope is None:
         return True
     site_id = await _resolve_override_site_id(db, override.scope, override.target_id)
-    return site_id == user.site_scope
+    return site_id == site_scope
 
 
 @router.get("/overrides", response_model=list[OverrideRead])
@@ -53,6 +51,7 @@ async def list_overrides(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
+    site_scope = require_site_scope(user)
     q = select(Override)
     if scope:
         q = q.where(Override.scope == scope)
@@ -60,7 +59,7 @@ async def list_overrides(
         q = q.where(Override.target_id == target_id)
     result = await db.execute(q)
     overrides = result.scalars().all()
-    if not _is_site_scoped_user(user):
+    if site_scope is None:
         return overrides
     visible: list[Override] = []
     for override in overrides:
@@ -76,9 +75,10 @@ async def create_override(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_roles("operator")),
 ):
-    if _is_site_scoped_user(user):
+    site_scope = require_site_scope(user)
+    if site_scope is not None:
         site_id = await _resolve_override_site_id(db, body.scope, body.target_id)
-        if site_id != user.site_scope:
+        if site_id != site_scope:
             raise HTTPException(status_code=403, detail="Access denied")
 
     override = Override(override_id=uuid.uuid4(), **body.model_dump())
@@ -131,7 +131,8 @@ async def get_manifest(
     user: TokenPayload = Depends(get_current_user),
 ):
     """Return the fully resolved component manifest for a device (§5.1)."""
-    if _is_site_scoped_user(user):
+    site_scope = require_site_scope(user)
+    if site_scope is not None:
         device = await db.get(Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="Device not found")
@@ -139,7 +140,7 @@ async def get_manifest(
         if site_id is None and device.zone_id:
             zone = await db.get(Zone, device.zone_id)
             site_id = zone.site_id if zone else None
-        if site_id != user.site_scope:
+        if site_id != site_scope:
             raise HTTPException(status_code=404, detail="Device not found")
 
     manifest = await resolve_manifest(db, device_id=device_id)
