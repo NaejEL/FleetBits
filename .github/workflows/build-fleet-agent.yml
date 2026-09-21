@@ -50,7 +50,7 @@ jobs:
           bash ./scripts/build-deb.sh
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fleet-agent-${{ matrix.arch }}-${{ steps.version.outputs.VERSION }}
           path: agent/dist/fleet-agent_${{ steps.version.outputs.VERSION }}_${{ matrix.arch }}.deb
