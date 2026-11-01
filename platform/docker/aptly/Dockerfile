@@ -1,7 +1,7 @@
 # aptly/Dockerfile
 # Minimal image: Debian 12 (glibc) + aptly from apt + thin HTTP entrypoint.
 # Alpine was avoided because the aptly release binary is glibc-linked.
-FROM debian:12-slim
+FROM debian:13-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     aptly \
