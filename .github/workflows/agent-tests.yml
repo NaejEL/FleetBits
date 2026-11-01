@@ -6,12 +6,20 @@ on:
     branches: [main]
     paths:
       - 'agent/**'
-      - '.github/workflows/agent-tests.yml'
+      # Not just this file: a pull request that only touches workflows used to
+      # run no test suite at all, so an actions/* bump was merged without ever
+      # exercising the action. This suite is the cheapest real one in the
+      # repository, and it uses actions/checkout, so it now guards that case.
+      - '.github/workflows/**'
   push:
     branches: [main]
     paths:
       - 'agent/**'
-      - '.github/workflows/agent-tests.yml'
+      # Not just this file: a pull request that only touches workflows used to
+      # run no test suite at all, so an actions/* bump was merged without ever
+      # exercising the action. This suite is the cheapest real one in the
+      # repository, and it uses actions/checkout, so it now guards that case.
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:

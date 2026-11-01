@@ -1,0 +1,11 @@
+# ruff runs over this component with `--select S` (flake8-bandit) from
+# .pre-commit-config.yaml. This file narrows nothing on shipped code; it only
+# aligns ruff's scope with bandit's, which the same .pre-commit-config.yaml
+# already invokes as `--exclude .venv,tests`.
+
+[lint.per-file-ignores]
+# S101 (use of `assert`) is not a finding in a pytest file: `assert` IS the
+# assertion API of the test runner, and removing it would remove the test.
+# Scoped to tests/ on purpose — an `assert` used as a runtime check in shipped
+# code still gets reported.
+"tests/**" = ["S101"]

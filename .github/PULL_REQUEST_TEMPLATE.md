@@ -5,8 +5,12 @@
 
 ## Security checklist
 
-**For Dependabot PRs:** Security items below are auto-verified by CI. No manual action needed.
-**For contributors:** Required — verify before requesting review.
+Required — verify before requesting review.
+
+**Dependency update pull requests** (opened by the bot) are exempt from this
+checklist job, which is skipped for that author. Nothing in CI verifies these
+items on its own: a human reviewer reads the diff and the release notes before
+merging. There is no automated substitute for that reading.
 
 - [ ] I reviewed authorization scope impact (tenant/site boundaries)
 - [ ] I reviewed authentication/session/token impact

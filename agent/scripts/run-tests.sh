@@ -17,8 +17,15 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
-SHELLCHECK_IMAGE="${SHELLCHECK_IMAGE:-koalaman/shellcheck:stable}"
-BATS_IMAGE="${BATS_IMAGE:-bats/bats:latest}"
+# Both images are pinned to an explicit version, never to a floating tag.
+# The analyser below is the SAME version as the one platform/scripts/run-tests.sh
+# uses: the two suites cover overlapping shell, and a repository whose two
+# harnesses run two different analysers reports two different sets of findings
+# for one tree. A floating tag also turns an upstream release into a red build
+# with no change in this repository, which is indistinguishable from a real
+# regression.
+SHELLCHECK_IMAGE="${SHELLCHECK_IMAGE:-koalaman/shellcheck:v0.11.0}"
+BATS_IMAGE="${BATS_IMAGE:-bats/bats:1.14.0}"
 
 SCRIPTS=(
   usr/lib/fleet-agent/identity-lib.sh

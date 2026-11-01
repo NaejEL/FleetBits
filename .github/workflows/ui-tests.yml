@@ -1,0 +1,52 @@
+---
+name: UI Tests
+
+# The smoke test suite of ui/. It answers one question and only one: does the
+# Flask application still build? Before it existed, a dependency update to ui/
+# was validated by "pip install resolved" (build-fleet-ui.yml) and "no known
+# CVE" (security-baseline.yml), neither of which ever imports the application.
+#
+# What it does NOT do is described in ui/tests/test_smoke.py and in
+# ui/README.md. It is not coverage of ui/, and it must not be read as such.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ui/**'
+      - '.github/workflows/ui-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ui/**'
+      - '.github/workflows/ui-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create the virtualenv
+        working-directory: ui
+        run: |
+          python3 -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          # Two files on purpose: requirements.txt is what the published image
+          # installs, requirements-dev.txt holds the test runner and ships
+          # nowhere. Both are needed to run the suite here.
+          ./.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run the smoke test suite
+        working-directory: ui
+        run: ./.venv/bin/python -m pytest

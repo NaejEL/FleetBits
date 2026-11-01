@@ -49,8 +49,18 @@ jobs:
           VERSION=${{ steps.version.outputs.VERSION }} \
           bash ./scripts/build-deb.sh
 
+      # PAIRING CONSTRAINT: this action and actions/download-artifact in the
+      # publish-dev job below are a matched pair, and their major numbers do
+      # NOT match — the correct pairing is upload v7 with download v8. Both
+      # were released on 2026-02-26 and cross-reference each other: upload v7
+      # can store an artifact unzipped, and download v8 is the first that
+      # detects this and skips decompression. Do not "align" them to the same
+      # number; that is what breaks the pair.
+      #
+      # This path runs ONLY on a tag push, so no pull request exercises it:
+      # a mismatch would surface at the next release, not in CI.
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fleet-agent-${{ matrix.arch }}-${{ steps.version.outputs.VERSION }}
           path: agent/dist/fleet-agent_${{ steps.version.outputs.VERSION }}_${{ matrix.arch }}.deb
@@ -75,6 +85,9 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
 
+      # PAIRING CONSTRAINT: see actions/upload-artifact in the build job above.
+      # v8 here is paired with upload v7, deliberately; the numbers differ on
+      # purpose. Move both in the same change, never one alone.
       - name: Download all .deb artifacts
         uses: actions/download-artifact@v8
         with:
