@@ -1,4 +1,4 @@
-FROM grafana/grafana-oss:11.1.0
+FROM grafana/grafana-oss:13.0.2
 
 # Bake provisioning + dashboards into image for reliable local dev
 # (avoids host bind-mount issues on some Windows/OneDrive paths).
