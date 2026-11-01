@@ -7,13 +7,23 @@ on:
     paths:
       - 'platform/**'
       - 'agent/**'
-      - '.github/workflows/platform-tests.yml'
+      # Same reason as agent-tests.yml: a workflow-only pull request must run a
+      # real suite. This one additionally uses actions/setup-python.
+      - '.github/workflows/**'
+      # tests/test_dependabot_coverage.py reads this file, so a change to it
+      # must run this suite.
+      - '.github/dependabot.yml'
   push:
     branches: [main]
     paths:
       - 'platform/**'
       - 'agent/**'
-      - '.github/workflows/platform-tests.yml'
+      # Same reason as agent-tests.yml: a workflow-only pull request must run a
+      # real suite. This one additionally uses actions/setup-python.
+      - '.github/workflows/**'
+      # tests/test_dependabot_coverage.py reads this file, so a change to it
+      # must run this suite.
+      - '.github/dependabot.yml'
   workflow_dispatch:
 
 permissions:

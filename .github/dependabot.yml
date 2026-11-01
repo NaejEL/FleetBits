@@ -1,29 +1,287 @@
 # One repository, four components with distinct ecosystems. Dependabot does not
-# discover manifests on its own, so every directory is declared explicitly.
+# discover manifests on its own and `directory:` is NOT recursive, so every
+# directory holding a manifest is declared explicitly, one entry per directory.
+#
+# The declared set is checked mechanically by
+# platform/tests/test_dependabot_coverage.py, which fails when an entry points
+# at a directory holding no manifest of its ecosystem, and when a manifest in
+# the tree is watched by no entry. Adding a Dockerfile or a requirements.txt
+# without adding its entry here fails the platform test suite.
+#
+# open-pull-requests-limit is raised well above the default of 5 on every entry
+# on purpose: a limit that is reached stops dependabot from opening the NEXT
+# update without saying so, which is the exact failure mode this configuration
+# exists to remove. Volume is controlled by grouping, never by a cap.
+#
+# Deliberately NOT watched here, and documented with the reason in
+# DEPENDENCY-INVENTORY.md at the repository root: the `image:` pins of
+# platform/docker/docker-compose.yml (the docker-compose ecosystem is in beta),
+# the `rev:` pins of the four .pre-commit-config.yaml, and the tool image
+# variables of the two scripts/run-tests.sh.
 version: 2
 updates:
+  # ── GitHub Actions ────────────────────────────────────────────────────────
   # Workflows live at the repository root, and only those ever run.
+  # Minor and patch bumps travel together in a single pull request; every major
+  # bump gets its own, because a major is a behaviour change that has to be read
+  # on its own — see actions/upload-artifact and actions/download-artifact in
+  # build-fleet-agent.yml, whose majors must stay paired.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      github-actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
+  # ── Python ────────────────────────────────────────────────────────────────
+  # One group per component, ALL update levels together: the header of
+  # api/requirements.txt documents a coupled set (fastapi, starlette,
+  # prometheus-fastapi-instrumentator, python-multipart, pytest) that cannot
+  # move apart without breaking the suite. A per-component group makes it move
+  # as one block.
   - package-ecosystem: "pip"
     directory: "/api"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      api-python:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "pip"
     directory: "/ui"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      ui-python:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
 
+  - package-ecosystem: "pip"
+    directory: "/platform/docker/mqtt-exporter"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      mqtt-exporter-python:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  # ── Container base images ─────────────────────────────────────────────────
+  # One entry per directory holding a Dockerfile, each with a single group so a
+  # directory produces at most one pull request per run.
   - package-ecosystem: "docker"
     directory: "/agent"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      agent-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "docker"
-    directory: "/platform"
+    directory: "/api"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      api-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      ui-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/alertmanager"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      alertmanager-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/aptly"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      aptly-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/caddy"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      caddy-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/edge-sim"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      edge-sim-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/grafana"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      grafana-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/headscale"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      headscale-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/loki"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      loki-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/mosquitto"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      mosquitto-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/mqtt-exporter"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      mqtt-exporter-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/postgresql"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      postgresql-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/platform/docker/prometheus"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 100
+    groups:
+      prometheus-images:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"

@@ -43,8 +43,15 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
+# willhallonline/ansible only runs `ansible-playbook --syntax-check`, a pass/fail
+# with no counted baseline: a newer ansible-core either parses the playbooks or
+# does not, and either answer is the one wanted. It stays on a floating tag on
+# purpose, so the syntax check is done against a current parser.
 ANSIBLE_IMAGE="${ANSIBLE_IMAGE:-willhallonline/ansible:latest}"
-ANSIBLE_LINT_IMAGE="${ANSIBLE_LINT_IMAGE:-pipelinecomponents/ansible-lint:latest}"
+# ansible-lint is the opposite case: the step below compares a COUNT against a
+# baseline recorded in this file, so it is only a ratchet if every environment
+# counts with the same analyser. Pinned for the same reason as SHELLCHECK_IMAGE.
+ANSIBLE_LINT_IMAGE="${ANSIBLE_LINT_IMAGE:-pipelinecomponents/ansible-lint:0.79.38}"
 # Pinned, not "stable": the ratchet below compares a COUNT, so it is only
 # meaningful if every environment counts with the same analyser. A floating
 # tag — or the distribution package, which is older still — turns a version
