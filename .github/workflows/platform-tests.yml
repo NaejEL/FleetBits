@@ -13,6 +13,13 @@ on:
       # tests/test_dependabot_coverage.py reads this file, so a change to it
       # must run this suite.
       - '.github/dependabot.yml'
+      # tests/test_dependabot_coverage.py asserts a property of the WHOLE tree:
+      # every manifest is watched by a dependabot entry. The two components that
+      # hold manifests of their own are listed here, otherwise a pull request
+      # adding api/Dockerfile.worker or ui/requirements-extra.txt would never run
+      # the guard that is supposed to reject it.
+      - 'api/**'
+      - 'ui/**'
   push:
     branches: [main]
     paths:
@@ -24,6 +31,13 @@ on:
       # tests/test_dependabot_coverage.py reads this file, so a change to it
       # must run this suite.
       - '.github/dependabot.yml'
+      # tests/test_dependabot_coverage.py asserts a property of the WHOLE tree:
+      # every manifest is watched by a dependabot entry. The two components that
+      # hold manifests of their own are listed here, otherwise a pull request
+      # adding api/Dockerfile.worker or ui/requirements-extra.txt would never run
+      # the guard that is supposed to reject it.
+      - 'api/**'
+      - 'ui/**'
   workflow_dispatch:
 
 permissions:

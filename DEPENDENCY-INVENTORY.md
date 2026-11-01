@@ -133,10 +133,12 @@ change that has to be read by itself.
 
 One pairing constraint is recorded in the workflow that carries it:
 `actions/upload-artifact` and `actions/download-artifact` in
-`.github/workflows/build-fleet-agent.yml` must stay on matching majors, and the
-path that uses them runs **only on a tag push** — no pull request would reveal a
-mismatch, so it would surface at the next release. Both comments in that file
-say so; move the two together.
+`.github/workflows/build-fleet-agent.yml` must stay on their **paired** majors —
+upload `v7` with download `v8`. The numbers differ on purpose; aligning them to
+the same major is what breaks the pair. Move the two together, in a single
+change, never one alone. The path that uses them runs **only on a tag push** —
+no pull request would reveal a broken pair, so it would surface at the next
+release. Both comments in that file say so.
 
 **Known blind spot on that pair.** The `publish-dev` job of
 `build-fleet-agent.yml` is guarded by `if: startsWith(github.ref, 'refs/tags/v')`.
