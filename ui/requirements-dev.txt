@@ -1,0 +1,8 @@
+# Test-only dependencies of ui/. Kept out of requirements.txt on purpose:
+# ui/Dockerfile installs requirements.txt alone, so the published fleet-ui
+# image carries no test runner and pip-audit gates the runtime surface only.
+#
+# Watched by the dependabot `pip` entry on /ui, which resolves every
+# requirements*.txt of the directory; platform/tests/test_dependabot_coverage.py
+# fails if that ever stops being true.
+pytest==9.0.3

@@ -85,6 +85,50 @@ cp .env.example .env
 flask run --port 5000
 ```
 
+### Tests
+
+```bash
+cd ui
+python -m venv .venv
+./.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+./.venv/bin/python -m pytest
+```
+
+Two requirements files, deliberately: `requirements.txt` holds what the
+application needs at runtime and is the only one `ui/Dockerfile` installs, so
+the published `fleet-ui` image carries no test runner. `requirements-dev.txt`
+holds the test dependencies. Both are watched by the same dependabot `pip`
+entry on `/ui`.
+
+To be exact about what "the image carries no test runner" means: the `pytest`
+*package* is absent from the image — `python -c "import pytest"` fails in it.
+The `requirements-dev.txt` *file* is present, along with `tests/`, `pytest.ini`
+and `ruff.toml`, because the Dockerfile ends with `COPY . .` and `ui/` has no
+`.dockerignore`. They are inert bytes, not an installed dependency surface.
+
+CI runs the same command on every pull request touching `ui/**`
+(`.github/workflows/ui-tests.yml`).
+
+**What this suite covers.** One thing: that `server.py` imports and that the
+Flask application object is built — the application factory runs, every
+blueprint is registered, the URL map is populated and the session cookie
+hardening survives the build. That is the failure a dependency bump produces
+when Flask, Jinja2 or `requests` changes an API on the import path. It exists
+because before it, a `ui/` dependency update was validated only by "`pip
+install` resolved" and "no known CVE", and neither of those ever imports the
+application.
+
+**What this suite does NOT cover.** Everything a request would exercise. No
+route is called, no template is rendered, no response is asserted, and no
+interaction with the Fleet API is checked. A route returning the wrong data, a
+template raising at render time, a missing permission check — none of that is
+caught here, and a green run says nothing about any of it. This is the minimum
+that makes "the dependency bump did not break the component" mean something;
+it is not test coverage of `ui/`, and treating it as coverage would recreate
+exactly the false assurance it was added to remove.
+
+---
+
 ### Security contributor guardrails
 
 Enable and run pre-commit hooks before every PR:
