@@ -1,4 +1,4 @@
-FROM headscale/headscale:0.23
+FROM headscale/headscale:v0.28
 
 # COPY creates parent dirs automatically — no RUN needed (distroless image has no shell)
 COPY config.yaml /etc/headscale/config.yaml
