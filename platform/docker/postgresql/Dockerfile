@@ -1,4 +1,4 @@
-FROM postgres:16-alpine
+FROM postgres:18-alpine
 
 # Bake the init script into the image so it is not bind-mounted from the host.
 # The script reads FLEET_DB_PASSWORD and SEMAPHORE_DB_PASSWORD from the
