@@ -47,7 +47,7 @@ per directory, one group each. What differs is what validates a bump.
 
 | File | Base image | Watched | What exercises a bump |
 |---|---|---|---|
-| `api/Dockerfile` | `python:3.12-slim` | Yes — `/api` | `security-regression-stack.yml` builds and runs this image on every pull request touching `api/`, `platform/` or `agent/`. Real validation. |
+| `api/Dockerfile` | `python:3.15-slim` | Yes — `/api` | `security-regression-stack.yml` builds and runs this image on every pull request touching `api/`, `platform/` or `agent/`. Real validation. |
 | `ui/Dockerfile` | `python:3.12-slim` | Yes — `/ui` | `build-fleet-ui.yml` builds the image on a pull request touching `ui/`. The image is built, never started: `fleet-ui` is not part of the integration stack. |
 | `agent/Dockerfile.container` | `ubuntu:24.04` | Yes — `/agent` | **Nothing on a pull request.** The job building this image is guarded by `if: startsWith(github.ref, 'refs/tags/v')`. `agent-tests.yml` runs shellcheck and bats, which neither build nor start the image. A base image bump — `24.04` is an LTS, most successors are not — is exercised for the first time at `docker compose --profile agent up`. |
 | `platform/docker/alertmanager/Dockerfile` | `prom/alertmanager:v0.27.0` | Yes — `/platform/docker/alertmanager` | `platform/scripts/run-tests.sh` validates the composition, never builds this image. |
