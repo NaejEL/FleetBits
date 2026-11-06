@@ -27,10 +27,12 @@
 #       - SQLAlchemy 2.0.36 installs on 3.15 but cannot import the models:
 #         Python 3.15 made typing.Union.__getitem__ reject a plain tuple, and
 #         SQLAlchemy's make_union_type() called it that way, so every
-#         declarative class raised TypeError at import. 2.0.57 is the first
-#         release to declare support for 3.15 and to fix that call. It stays on
-#         the 2.0 line; its wheel is pure Python, the optional C extensions
-#         simply are not built for 3.15 yet.
+#         declarative class raised TypeError at import. SQLAlchemy first
+#         advertises 3.15 in its trove classifiers at 2.0.52, and 2.0.52 does
+#         already import the models cleanly — so the floor is 2.0.52, not
+#         2.0.57. 2.0.57 is simply the current head of the 2.0 line and the
+#         release actually verified here. It stays on the 2.0 line; its wheel
+#         is pure Python, the optional C extensions are not built for 3.15 yet.
 #     The set in (1)/(2) did NOT have to move for the interpreter bump.
 #
 # pip-audit on this file: no known vulnerabilities.
