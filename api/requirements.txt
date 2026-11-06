@@ -14,17 +14,38 @@
 #     1.3.1+, python-multipart 0.0.31 and pytest 9.0.3 — so the starlette bump
 #     that (1) needs is also the one the CVEs need.
 #
+# (3) The Dockerfile base image moved from python:3.12-slim to python:3.15-slim.
+#     Four more pins had to move with it, and for two distinct reasons:
+#       - asyncpg 0.30.0, psycopg2-binary 2.9.10 and pydantic 2.10.3 (which
+#         pins pydantic-core 2.27.1) publish no cp315 wheel. pip fell back to
+#         building them from source inside the slim image, which has no
+#         toolchain, and `pip install` died with
+#         "Failed to build asyncpg psycopg2-binary pydantic-core". The first
+#         releases that ship cp315 manylinux wheels are asyncpg 0.32.0,
+#         psycopg2-binary 2.9.13 and pydantic-core 2.48.0 — reached here
+#         through pydantic 2.14.3, which pins pydantic-core 2.50.4.
+#       - SQLAlchemy 2.0.36 installs on 3.15 but cannot import the models:
+#         Python 3.15 made typing.Union.__getitem__ reject a plain tuple, and
+#         SQLAlchemy's make_union_type() called it that way, so every
+#         declarative class raised TypeError at import. 2.0.57 is the first
+#         release to declare support for 3.15 and to fix that call. It stays on
+#         the 2.0 line; its wheel is pure Python, the optional C extensions
+#         simply are not built for 3.15 yet.
+#     The set in (1)/(2) did NOT have to move for the interpreter bump.
+#
 # pip-audit on this file: no known vulnerabilities.
-# Verified with `./.venv/bin/python -m pytest` on Python 3.12, the interpreter
-# the Dockerfile and the workflows use.
+# Verified with `python -m pytest` on BOTH interpreters in play — Python 3.15,
+# which the Dockerfile and the compose stack use, and Python 3.12, which the
+# workflows still set up for the pytest and pip-audit jobs: 158 passed,
+# 9 skipped on each.
 # ─────────────────────────────────────────────────────────────────────────────
 fastapi==0.141.1
 uvicorn[standard]==0.32.1
-sqlalchemy[asyncio]==2.0.36
+sqlalchemy[asyncio]==2.0.57
 alembic==1.14.0
-asyncpg==0.30.0
-psycopg2-binary==2.9.10
-pydantic==2.10.3
+asyncpg==0.32.0
+psycopg2-binary==2.9.13
+pydantic==2.14.3
 pydantic-settings==2.7.0
 PyJWT>=2.9.0
 bcrypt==4.2.1
