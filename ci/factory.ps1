@@ -14,6 +14,10 @@ $ErrorActionPreference = 'Stop'
 
 $repoDir = Split-Path -Parent $PSScriptRoot
 
+if (-not [System.IO.Path]::IsPathRooted($Spec)) {
+    $Spec = Join-Path $repoDir $Spec
+}
+
 if (-not (Test-Path -LiteralPath $Spec -PathType Leaf)) {
     Write-Error "Spec not found: $Spec"
     exit 1
@@ -52,8 +56,14 @@ Write-Host "Log     : $logFile"
 
 $env:CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = '1'
 $env:CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS = '0'
-& claude @claudeArgs | Tee-Object -FilePath $logFile
-$status = $LASTEXITCODE
+Push-Location $repoDir
+try {
+    & claude @claudeArgs | Tee-Object -FilePath $logFile
+    $status = $LASTEXITCODE
+}
+finally {
+    Pop-Location
+}
 
 Write-Host "claude exit: exit code $status"
 exit $status

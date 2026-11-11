@@ -39,6 +39,11 @@ if [ -z "$spec" ]; then
     exit 2
 fi
 
+case "$spec" in
+    /*) ;;
+    *) spec="$repo_dir/$spec" ;;
+esac
+
 if [ ! -f "$spec" ]; then
     echo "Spec not found: $spec" >&2
     exit 1
@@ -69,7 +74,7 @@ echo "Mode    : $([ "$yolo" -eq 1 ] && echo 'YOLO (permissions ignored)' || echo
 echo "Log     : $log_file"
 
 set +e
-"${cmd[@]}" | tee "$log_file"
+(cd "$repo_dir" && "${cmd[@]}") | tee "$log_file"
 status="${PIPESTATUS[0]}"
 set -e
 
