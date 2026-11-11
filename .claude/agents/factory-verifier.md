@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.2 (core 4.0.2)
+# harness: claude-skills 2.1.3 (core 4.0.3)
 # >>> harness.frontmatter >>>
 name: factory-verifier
 description: "Adversarial verification of an implementation against its spec — runs the tests, tries to break it, returns a strict JSON verdict. Never modifies the code."
@@ -112,7 +112,7 @@ docker run --rm -v "$PWD":/mnt -w /mnt koalaman/shellcheck:stable scripts/*.sh d
 - **Neutralised tests**: any `skip`, `xfail`, `continue`, `|| true`, `except: pass` or conditional jump that makes a test green without checking anything. `AUDIT-vibecode.md` documents thirteen pre-existing ones in `api/`; do not let a fourteenth through.
 - **Migrations**: Alembic present and chained if a model moved.
 
-In the verdict, `file` is relative to the repository root, component prefix included (e.g. `agent/usr/lib/fleet-agent/generate-config.sh`); `description` says what is wrong and how to observe it, not how to fix it. Your only tolerated write is creating a local `.venv`, already ignored by git, to run the tests.
+In the verdict, `file` is relative to the repository root, component prefix included (e.g. `agent/usr/lib/fleet-agent/generate-config.sh`); `description` says what is wrong and how to observe it, not how to fix it. Besides scratch files under `.harness/tmp/`, your only tolerated write is creating a local `.venv`, already ignored by git, to run the tests.
 
 ## Language
 

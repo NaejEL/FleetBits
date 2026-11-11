@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.2 (core 4.0.2)
+# harness: claude-skills 2.1.3 (core 4.0.3)
 # >>> harness.frontmatter >>>
 name: factory-run
 description: "Runs one cycle of the software factory (Planner → human gate on the spec → Builder → Verifier with a fix loop) on a need or an approved spec."
@@ -69,4 +69,4 @@ Delivery (gate `factory-run.ship`, unless `--no-ship`): `H factory-run deliver -
 
 - **Plan**: if the need cites a finding from `AUDIT-vibecode.md` or a cross-cutting document, point it out explicitly to the Planner.
 - **Build**: pass the Builder the list of components touched (`api/`, `ui/`, `agent/`, `platform/`) as the spec names them, with the instruction to run the build and the tests of each one.
-- **Final report**: group the modified files by component (`api/`, `ui/`, `agent/`, `platform/`, root), and give for each component touched the test command run and its exit code (`api/`: `./.venv/bin/python -m pytest`; `ui/`: the same if a `tests/` exists; `agent/`: `./scripts/run-tests.sh`, i.e. `shellcheck` + `bats`; `platform/`: `./scripts/run-tests.sh`, i.e. `docker compose config -q` + `ansible-playbook --syntax-check` + `ansible-lint` + `pytest` + `shellcheck`). Never commit in the user's place — the splitting of commits belongs to them.
+- **Final report**: group the modified files by component (`api/`, `ui/`, `agent/`, `platform/`, root), and give for each component touched the test command run and its exit code (`api/`: `./.venv/bin/python -m pytest`; `ui/`: the same if a `tests/` exists; `agent/`: `./scripts/run-tests.sh`, i.e. `shellcheck` + `bats`; `platform/`: `./scripts/run-tests.sh`, i.e. `docker compose config -q` + `ansible-playbook --syntax-check` + `ansible-lint` + `pytest` + `shellcheck`). Outside the delivery step of the cycle, never commit in the user's place — the splitting of commits belongs to them.
