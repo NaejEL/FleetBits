@@ -1,95 +1,79 @@
-<#
-.SYNOPSIS
-    Headless execution of one FleetBits software factory cycle.
-
-.DESCRIPTION
-    PowerShell equivalent of ci/factory.sh.
-    The spec must exist and carry "Statut : APPROUVEE": a headless cycle never
-    writes a spec, the human gate of /factory-run cannot be bypassed.
-
-    JSON output : factory-logs/factory-<timestamp>.json
-    Exit code   : that of `claude`.
-
-.EXAMPLE
-    pwsh -File ci/factory.ps1 specs/SPEC-my-requirement.md
-
-.EXAMPLE
-    pwsh -File ci/factory.ps1 specs/SPEC-my-requirement.md -Yolo
-#>
-
+# harness: claude-skills 2.1.3 (core 4.0.3)
+# >>> harness.ci >>>
+# Runs a headless software-factory cycle on an already approved spec.
+# Usage: pwsh -File ci/factory.ps1 <spec-path> [-Yolo]
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [string] $Spec,
+    [string]$Spec,
 
-    [switch] $Yolo
+    [switch]$Yolo
 )
 
 $ErrorActionPreference = 'Stop'
 
-$RootDir = Split-Path -Parent $PSScriptRoot
+$repoDir = Split-Path -Parent $PSScriptRoot
 
-if ([System.IO.Path]::IsPathRooted($Spec)) {
-    $SpecAbs = $Spec
-} else {
-    $SpecAbs = Join-Path $RootDir $Spec
+# A relative path is read from the current folder when it exists there, else from the repository root;
+# it is made absolute because claude runs from the root.
+if (-not [System.IO.Path]::IsPathRooted($Spec)) {
+    if (Test-Path -LiteralPath $Spec -PathType Leaf) { $Spec = (Resolve-Path -LiteralPath $Spec).Path }
+    else { $Spec = Join-Path $repoDir $Spec }
 }
 
-if (-not (Test-Path -LiteralPath $SpecAbs -PathType Leaf)) {
-    Write-Error "ci/factory.ps1: spec not found: $SpecAbs"
-    exit 2
+if (-not (Test-Path -LiteralPath $Spec -PathType Leaf)) {
+    Write-Error "Spec not found: $Spec"
+    exit 1
 }
 
-if (-not (Select-String -LiteralPath $SpecAbs -Pattern 'Statut : APPROUVEE' -SimpleMatch -Quiet)) {
-    Write-Host "ci/factory.ps1: `"$SpecAbs`" does not carry `"Statut : APPROUVEE`"." -ForegroundColor Red
-    Write-Host "                A CI cycle requires a spec already approved by the user."
-    Write-Host "                Run first, in an interactive session: /factory-run `"<your requirement>`""
-    exit 2
+if (-not (Select-String -LiteralPath $Spec -Pattern '^\s*(Status\s*:\s*APPROVED|Statut\s*:\s*APPROUVEE)' -Quiet)) {
+    Write-Error "Spec not approved: '$Spec' does not contain 'Status: APPROVED' (or the French 'Statut : APPROUVEE'). A CI cycle requires a spec validated by the Product Owner."
+    exit 1
 }
 
-if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-    Write-Error "ci/factory.ps1: the `"claude`" command was not found in the PATH."
-    exit 127
+$logDir = Join-Path $repoDir 'factory-logs'
+if (-not (Test-Path -LiteralPath $logDir)) {
+    New-Item -ItemType Directory -Path $logDir | Out-Null
 }
+$logFile = Join-Path $logDir ("factory-{0}.json" -f (Get-Date -Format yyyyMMdd-HHmmss))
 
-# Tool allowlist: the factory's basic tools, git on the monorepo,
-# and the commands actually used by the FleetBits stack
-# (python3/venv for api/ and ui/, docker for shellcheck, bats, ansible-lint,
-# compose, and bash -n for the -agent and -platform scripts).
-$AllowedTools = 'Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python3 *),Bash(pip *),Bash(pytest *),Bash(ruff *),Bash(bandit *),Bash(alembic *),Bash(docker *),Bash(bash -n *),Bash(shellcheck *),Bash(ansible-lint *),Bash(ansible-playbook *)'
-
-$LogDir = Join-Path $RootDir 'factory-logs'
-if (-not (Test-Path -LiteralPath $LogDir -PathType Container)) {
-    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
-}
-$Stamp   = Get-Date -Format yyyyMMdd-HHmmss
-$LogFile = Join-Path $LogDir "factory-$Stamp.json"
-
-$ClaudeArgs = @(
-    '-p', "/factory-run '$SpecAbs'",
+$claudeArgs = @(
+    '-p', "/factory-run '$Spec'",
     '--output-format', 'json',
     '--max-turns', '100'
 )
 
 if ($Yolo) {
-    $ClaudeArgs += '--dangerously-skip-permissions'
-    $ModeLabel = 'YOLO (permissions ignored)'
-} else {
-    $ClaudeArgs += @('--permission-mode', 'acceptEdits', '--allowedTools', $AllowedTools)
-    $ModeLabel = 'acceptEdits + allowlist'
+    $claudeArgs += '--dangerously-skip-permissions'
+    $mode = 'YOLO (permissions ignored)'
+}
+else {
+    $claudeArgs += @('--permission-mode', 'acceptEdits')
+    $claudeArgs += @('--allowedTools', 'Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python3 *),Bash(docker *),Bash(ruff *),Bash(pip *),Bash(pytest *),Bash(bandit *),Bash(alembic *),Bash(bash -n *),Bash(shellcheck *),Bash(ansible-lint *),Bash(ansible-playbook *)')
+    $mode = 'acceptEdits + allowlist'
 }
 
-Write-Host "ci/factory.ps1: spec      = $SpecAbs"
-Write-Host "ci/factory.ps1: log       = $LogFile"
-Write-Host "ci/factory.ps1: mode      = $ModeLabel"
+Write-Host "Spec    : $Spec"
+Write-Host "Mode    : $mode"
+Write-Host "Log     : $logFile"
 
-Push-Location $RootDir
+$env:CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = '1'
+$env:CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS = '0'
+$null = Get-Command claude -ErrorAction Stop
+$status = $null
+Push-Location $repoDir
+# 'Continue': under 'Stop', Windows PowerShell 5.1 turns each redirected stderr line into a terminating error.
+$ErrorActionPreference = 'Continue'
 try {
-    & claude @ClaudeArgs | Tee-Object -FilePath $LogFile
-    $ExitCode = $LASTEXITCODE
-} finally {
+    & claude @claudeArgs 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $logFile
+    $status = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = 'Stop'
     Pop-Location
 }
+if ($null -eq $status) { $status = 1 }
 
-Write-Host "ci/factory.ps1: claude exit code = $ExitCode"
-exit $ExitCode
+Write-Host "claude exit: exit code $status"
+exit $status
+# <<< harness.ci <<<
