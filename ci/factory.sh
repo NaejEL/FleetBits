@@ -51,7 +51,7 @@ if [ ! -f "$spec" ]; then
     exit 1
 fi
 
-if ! grep -Eq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*APPROVED|Statut[[:space:]]*:[[:space:]]*APPROUVEE)" "$spec"; then
+if ! grep -Eiq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*APPROVED|Statut[[:space:]]*:[[:space:]]*APPROUVEE)" "$spec"; then
     echo "Spec not approved: '$spec' does not contain 'Status: APPROVED' (or the French 'Statut : APPROUVEE')." >&2
     echo "A CI cycle requires a spec validated by the Product Owner." >&2
     exit 1
