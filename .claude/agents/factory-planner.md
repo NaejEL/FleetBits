@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.1 (core 4.0.1)
+# harness: claude-skills 2.1.2 (core 4.0.2)
 # >>> harness.frontmatter >>>
 name: factory-planner
 description: "Analyzes a need and the existing code to draft a specification with testable acceptance criteria and open questions. Read-only."
