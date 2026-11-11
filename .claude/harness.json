@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "autonomy": "auto",
+  "profiles": [
+    {
+      "name": "software",
+      "added": "2026-11-11",
+      "by": "scout"
+    }
+  ],
+  "skills": {
+    "software-factory": {
+      "repo_commit": "9d5459f374b92c1fa7a13dc28ec8f60a9551e501",
+      "repo_describe": "2.1.1",
+      "repo_dirty": false,
+      "core_version": "4.0.1",
+      "installed_at": "2026-11-11T17:40:21+01:00",
+      "updated_at": "2026-11-11T18:18:13+01:00",
+      "options": {
+        "stacks": [
+          "python"
+        ],
+        "interpreter": "python3",
+        "ci": [
+          "ci/factory.ps1",
+          "ci/factory.sh"
+        ],
+        "code_index_offered": false
+      },
+      "params": {
+        "build_command": "docker compose -f platform/docker/docker-compose.yml config -q for platform/, docker build only when packaging is touched; the per-component commands are in the \"FleetBits monorepo\" section below",
+        "test_command": "python3 -m pytest through each component's local venv (api/: ./.venv/bin/python -m pytest; ui/ once its harness exists), agent/scripts/run-tests.sh (shellcheck + bats) and platform/scripts/run-tests.sh — see the \"FleetBits monorepo\" section below",
+        "lint_command": "ruff check --select S and bandit -ll for api/ and ui/, shellcheck for agent/ and platform/ scripts, ansible-lint for platform/ansible",
+        "conventions": "`GUIDELINES.md` at the root is canonical; everything that survives the cycle is written in English (`GUIDELINES.md` §8); each component's `.pre-commit-config.yaml` (gitleaks, actionlint, bandit, ruff) is the minimum bar; no secret in clear text",
+        "extra_tools": [
+          "Bash(pip *)",
+          "Bash(pytest *)",
+          "Bash(bandit *)",
+          "Bash(alembic *)",
+          "Bash(docker *)",
+          "Bash(bash -n *)",
+          "Bash(shellcheck *)",
+          "Bash(ansible-lint *)",
+          "Bash(ansible-playbook *)"
+        ]
+      },
+      "files": {
+        ".claude/agents/factory-builder.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "dc261bad17088746c4a6d165887a26ea0530177818402dfdc0436c7b562417a9",
+            "harness.body": "db7d06133785ba51f9fac172b53d259ed042cb9ade27397cf09ffd3b7bf6b110"
+          }
+        },
+        ".claude/agents/factory-planner.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "42ac046b22fc49259e84de597c15093ed00322183fbb8e3fe960ab9ea1dc1c47",
+            "harness.body": "0e422bb406469d68c3d3ca5e5fef5b894c7150857ad11e16b7a9e99fe2ef5518"
+          }
+        },
+        ".claude/agents/factory-verifier.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "dc7e4481b2319ac9e06e3281a0339d8f033c5a1a194fc7f993f0ee9754752806",
+            "harness.body": "e3cdfae0e119b0f26da75867b7c8462c0f6a788cce9699d98fd8503d4282df53"
+          }
+        },
+        ".claude/harness/MANIFEST.json": {
+          "kind": "copied"
+        },
+        ".claude/settings.json": {
+          "kind": "merged"
+        },
+        ".claude/skills/factory-run/SKILL.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "cd4e9561b47ff6e20a603c8981c7bf9c8c8a3859b82fe21ef3eb7a063f107100",
+            "harness.profile.software": "9ae3d7321fcc5318ce9fe61e36cfabbed04bd7fbcfe1f93003ba6108b47d539b"
+          }
+        },
+        ".gitignore": {
+          "kind": "merged"
+        },
+        ".vscode/tasks.json": {
+          "kind": "merged"
+        },
+        "ci/factory.ps1": {
+          "kind": "generated",
+          "blocks": {
+            "harness.ci": "bb9d44765f09c7eb3621aeaa8823703c140a095607511e0ab68adce8a9e3482e"
+          }
+        },
+        "ci/factory.sh": {
+          "kind": "generated",
+          "blocks": {
+            "harness.ci": "00bbb830c78e42a44dca1597659c4bbb2db355abf5bfa9cd083ecaafd4832aab"
+          }
+        }
+      }
+    }
+  },
+  "inferred_from": "pre-core"
+}
