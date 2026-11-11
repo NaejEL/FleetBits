@@ -56,7 +56,7 @@ per directory, one group each. What differs is what validates a bump.
 | `platform/docker/edge-sim/Dockerfile` | `python:3.12-alpine` | Yes — `/platform/docker/edge-sim` | Built and started by `security-regression-stack.yml`. Real validation. |
 | `platform/docker/grafana/Dockerfile` | `grafana/grafana-oss:11.1.0` | Yes — `/platform/docker/grafana` | Composition validation only. |
 | `platform/docker/headscale/Dockerfile` | `headscale/headscale:0.23` | Yes — `/platform/docker/headscale` | Composition validation only. |
-| `platform/docker/loki/Dockerfile` | `grafana/loki:3.0.0` | Yes — `/platform/docker/loki` | Built and started by `security-regression-stack.yml`. Real validation. |
+| `platform/docker/loki/Dockerfile` | `grafana/loki:3.7.9` | Yes — `/platform/docker/loki` | Built and started by `security-regression-stack.yml`. Real validation. |
 | `platform/docker/mosquitto/Dockerfile` | `eclipse-mosquitto:2` | Yes — `/platform/docker/mosquitto` | Composition validation only. A floating major tag: the digest moves under a pin that does not. |
 | `platform/docker/mqtt-exporter/Dockerfile` | `python:3.12-slim` | Yes — `/platform/docker/mqtt-exporter` | Composition validation only. |
 | `platform/docker/postgresql/Dockerfile` | `postgres:16-alpine` | Yes — `/platform/docker/postgresql` | Built and started by `security-regression-stack.yml`. Real validation. |
