@@ -71,7 +71,7 @@ Interactive API docs: **http://localhost:8000/docs**
 ### Run tests
 
 ```bash
-python3 -m venv .venv                  # Python 3.12 — see the note below
+python3 -m venv .venv                  # Python 3.12 or 3.15 — see the note below
 ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/python -m pytest
 ```
@@ -82,10 +82,12 @@ against in-memory SQLite.
 
 Two things to know about the interpreter and the markers:
 
-* **Python 3.12** is the supported interpreter — it is what the `Dockerfile` and
-  the CI workflows use. `pydantic==2.10.3` publishes no wheel for 3.13/3.14, so
-  on a newer interpreter the install fails while building `pydantic-core`.
-  Modernising the dependency set is separate work.
+* **Python 3.15** is what the `Dockerfile` and the compose stack ship, since the
+  base image moved to `python:3.15-slim`. The CI workflows still set up **Python
+  3.12** for the `pytest` and `pip-audit` jobs, and the suite is kept green on
+  both: 158 passed, 9 skipped on each. Either interpreter works for a local
+  virtualenv. The pins that had to move for 3.15 — and the two distinct reasons
+  they had to — are documented at the top of `requirements.txt`.
 * Tests marked **`crossrepo`** read `agent/`, `platform/` and `ui/`, the sibling
   folders of this one in the monorepo. They are deliberately *not* marked
   `security`: the security suite runs inside the `fleet-api` container image,
