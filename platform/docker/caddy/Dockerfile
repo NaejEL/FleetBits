@@ -1,4 +1,4 @@
-FROM caddy:2.8-alpine
+FROM caddy:2.10-alpine
 
 # Bake both Caddyfiles into the image.
 # Production default uses Caddyfile; the dev override changes the command to
